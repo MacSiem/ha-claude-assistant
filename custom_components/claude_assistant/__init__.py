@@ -16,6 +16,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.storage import Store
 from homeassistant.components import websocket_api
+from homeassistant.components.frontend import async_register_built_in_panel
 
 from .action_handler import ActionHandler
 from .api_client import ClaudeAPIClient
@@ -457,7 +458,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )]
     )
 
-    hass.components.frontend.async_register_built_in_panel(
+    async_register_built_in_panel(hass,
         component_name="custom",
         sidebar_title=PANEL_TITLE,
         sidebar_icon=PANEL_ICON,
