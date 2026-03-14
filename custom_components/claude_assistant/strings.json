@@ -2,72 +2,64 @@
   "config": {
     "step": {
       "user": {
-        "title": "Claude Assistant Setup",
-        "description": "Enter your Anthropic API key. Get one at {learn_more}",
+        "title": "Metoda autoryzacji",
+        "description": "Wybierz sposób logowania do Claude AI",
         "data": {
-          "api_key": "API Key"
+          "auth_type": "Metoda autoryzacji"
+        }
+      },
+      "api_key": {
+        "title": "Klucz API Anthropic",
+        "description": "Wprowadź klucz API z {api_url}",
+        "data": {
+          "api_key": "Klucz API"
+        }
+      },
+      "personal": {
+        "title": "Konto osobiste",
+        "description": "{session_info}",
+        "data": {
+          "session_key": "Klucz sesji (sessionKey)"
         }
       },
       "model": {
-        "title": "Select Claude Model",
-        "description": "Choose which Claude model to use. Available: {models}",
+        "title": "Model Claude",
+        "description": "Wybierz model AI",
         "data": {
           "model": "Model"
         }
       },
       "safety": {
-        "title": "Safety Settings",
-        "description": "Choose the safety confirmation level for actions",
+        "title": "Poziom bezpieczeństwa",
+        "description": "Konfiguracja potwierdzeń dla akcji smart home",
         "data": {
-          "safety_level": "Safety Level"
+          "safety_level": "Poziom bezpieczeństwa"
         }
       }
     },
     "error": {
-      "invalid_auth": "Invalid API key. Please check and try again.",
-      "cannot_connect": "Cannot connect to Anthropic API. Check your connection.",
-      "unknown": "An unexpected error occurred."
+      "cannot_connect": "Nie można połączyć z API Anthropic",
+      "invalid_auth": "Nieprawidłowy klucz API",
+      "invalid_session": "Nieprawidłowy klucz sesji",
+      "unknown": "Nieoczekiwany błąd"
     },
     "abort": {
-      "already_configured": "Claude Assistant is already configured."
+      "already_configured": "Integracja jest już skonfigurowana"
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Claude Assistant Settings",
-        "description": "Update Claude Assistant settings",
+        "title": "Ustawienia Claude Assistant",
+        "description": "Dostosuj parametry asystenta AI",
         "data": {
-          "model": "Model",
-          "safety_level": "Safety Level"
+          "model": "Model Claude",
+          "temperature": "Temperatura (0.0 - 1.0)",
+          "max_tokens": "Maksymalna liczba tokenów (256 - 8192)",
+          "safety_level": "Poziom bezpieczeństwa",
+          "system_prompt": "Prompt systemowy"
         }
       }
-    }
-  },
-  "services": {
-    "send_message": {
-      "name": "Send Message",
-      "description": "Send a message to Claude Assistant",
-      "fields": {
-        "message": {
-          "name": "Message",
-          "description": "Message to send to Claude"
-        }
-      }
-    },
-    "execute_action": {
-      "name": "Execute Action",
-      "description": "Execute a pending action",
-      "fields": {
-        "action_id": {
-          "name": "Action ID",
-          "description": "ID of the pending action to execute"
-        }
-      }
-    },
-    "get_history": {
-      "name": "Get History",
-      "description": "Get conversation history"
     }
   }
 }
