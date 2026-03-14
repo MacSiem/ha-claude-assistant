@@ -31,7 +31,7 @@ cp -r ha-claude-assistant/custom_components/claude_assistant ~/.homeassistant/cu
 
 2. Restart Home Assistant
 
-3. Go to Settings → Devices & Services → Integrations
+3. Go to Settings â Devices & Services â Integrations
 
 4. Click "Create Integration" and search for "Claude Assistant"
 
@@ -266,7 +266,7 @@ No personal data beyond your Home Assistant entity names is transmitted to Anthr
 
 After initial setup, you can change settings via Options:
 
-1. Go to Settings → Devices & Services → Integrations
+1. Go to Settings â Devices & Services â Integrations
 2. Click on Claude Assistant
 3. Click "Options"
 4. Change model or safety level
@@ -316,17 +316,17 @@ For advanced users, the system prompt can be customized by modifying the `DEFAUL
 
 ```
 User Input (Chat/Voice)
-    ↓
+    â
 Conversation Agent / WebSocket Handler
-    ↓
+    â
 Claude API Client (with system prompt + tools)
-    ↓
+    â
 Claude Response
-    ↓
+    â
 Text Response + Tool Calls
-    ↓
+    â
 Action Handler (Classification + Confirmation)
-    ↓
+    â
 Service Execution (if approved)
 ```
 
@@ -381,3 +381,12 @@ https://github.com/MacSiem/ha-claude-assistant
 - Safety level configuration
 - Entity access and state queries
 - Service call execution
+
+---
+
+## Support
+
+If you find this project useful, consider supporting its development:
+
+<a href="https://buymeacoffee.com/macsiem" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="50" ></a>
+<a href="https://www.paypal.com/donate/?hosted_button_id=Y967H4PLRBN8W" target="_blank"><img src="https://img.shields.io/badge/PayPal-Donate-blue?logo=paypal&logoColor=white" alt="PayPal Donate" height="50" ></a>
