@@ -1,9 +1,21 @@
 """Constants for the Claude Assistant integration."""
 
 DOMAIN = "claude_assistant"
+
+# Config keys
 CONF_API_KEY = "api_key"
 CONF_MODEL = "model"
 CONF_SAFETY_LEVEL = "safety_level"
+CONF_AUTH_TYPE = "auth_type"
+CONF_SESSION_KEY = "session_key"
+CONF_TEMPERATURE = "temperature"
+CONF_MAX_TOKENS = "max_tokens"
+CONF_SYSTEM_PROMPT = "system_prompt"
+
+# Auth types
+AUTH_TYPE_API_KEY = "api_key"
+AUTH_TYPE_PERSONAL = "personal_account"
+AUTH_TYPES = [AUTH_TYPE_API_KEY, AUTH_TYPE_PERSONAL]
 
 # Safety levels
 SAFETY_LEVEL_ALL = "all_actions"
@@ -39,70 +51,50 @@ DANGEROUS_SERVICES = [
     "climate.set_temperature",
     "water_heater.set_temperature",
     "siren.turn_on",
+    "siren.turn_off",
 ]
 
-# Action categories
-ACTION_CATEGORY_SAFE = "safe"
-ACTION_CATEGORY_MODERATE = "moderate"
-ACTION_CATEGORY_DANGEROUS = "dangerous"
-ACTION_CATEGORY_CRITICAL = "critical"
-
-ACTION_CATEGORIES = [
-    ACTION_CATEGORY_SAFE,
-    ACTION_CATEGORY_MODERATE,
-    ACTION_CATEGORY_DANGEROUS,
-    ACTION_CATEGORY_CRITICAL,
-]
-
-# Available Claude models
-DEFAULT_MODEL = "claude-opus-4-20250514"
-
+# Claude models
 CLAUDE_MODELS = [
     "claude-opus-4-20250514",
     "claude-sonnet-4-20250514",
     "claude-haiku-3-5-20241022",
 ]
 
-# System prompt template
-DEFAULT_SYSTEM_PROMPT = """You are Claude, an AI assistant integrated with Home Assistant for smart home control.
+DEFAULT_MODEL = "claude-opus-4-20250514"
+DEFAULT_TEMPERATURE = 0.7
+DEFAULT_MAX_TOKENS = 2048
 
-Your capabilities:
-1. Query and control smart home devices via available tools
-2. Provide information about home automation
-3. Explain device states and suggest actions
-4. Execute service calls with appropriate safety considerations
+# Default system prompt
+DEFAULT_SYSTEM_PROMPT = """You are Claude, an AI assistant integrated with Home Assistant.
+You can help users control their smart home devices, check sensor states,
+create automations, and answer questions about their home setup.
+Be concise, helpful, and proactive in suggesting relevant actions.
+When controlling devices, always confirm the action you're about to take."""
 
-Rules:
-- Always be concise and helpful
-- Confirm dangerous actions explicitly before execution
-- Explain what you're doing in plain language
-- If uncertain about an action, ask for clarification
-- Never execute actions without explicit tool calls
-- Respect user preferences and safety settings
-
-Available tools: call_service, get_state, get_history, analyze_energy, set_automation
-
-Current Home Assistant State:
-{ha_state}
-
-Respond naturally to user queries and use tools as needed."""
-
-# WebSocket commands
-WS_TYPE_CHAT = "claude_assistant/chat"
-WS_TYPE_CONFIRM_ACTION = "claude_assistant/confirm_action"
-WS_TYPE_GET_PENDING = "claude_assistant/get_pending"
-WS_TYPE_GET_ENTITIES = "claude_assistant/get_entities"
-WS_TYPE_SETTINGS = "claude_assistant/settings"
+# WebSocket types
+WS_TYPE_CHAT = f"{DOMAIN}/chat"
+WS_TYPE_CONFIRM_ACTION = f"{DOMAIN}/confirm_action"
+WS_TYPE_GET_PENDING = f"{DOMAIN}/get_pending"
+WS_TYPE_GET_ENTITIES = f"{DOMAIN}/get_entities"
+WS_TYPE_SETTINGS = f"{DOMAIN}/settings"
+WS_TYPE_GET_LOGS = f"{DOMAIN}/get_logs"
+WS_TYPE_CLEAR_LOGS = f"{DOMAIN}/clear_logs"
+WS_TYPE_GET_STATS = f"{DOMAIN}/get_stats"
+WS_TYPE_UPDATE_SETTINGS = f"{DOMAIN}/update_settings"
 
 # Storage keys
 STORAGE_KEY_HISTORY = f"{DOMAIN}_history"
 STORAGE_KEY_PENDING = f"{DOMAIN}_pending"
+STORAGE_KEY_LOGS = f"{DOMAIN}_logs"
+STORAGE_KEY_STATS = f"{DOMAIN}_stats"
+STORAGE_KEY_SETTINGS = f"{DOMAIN}_settings"
 
-# Limits
-MAX_HISTORY_ITEMS = 100
-ACTION_CONFIRMATION_TIMEOUT = 300  # 5 minutes
-RATE_LIMIT_CALLS_PER_MINUTE = 30
-
-# Panel info
+# Panel
 PANEL_TITLE = "Claude Assistant"
 PANEL_ICON = "mdi:robot"
+PANEL_URL = "/api/panel_custom/claude-assistant"
+
+# Limits
+MAX_LOG_ENTRIES = 500
+MAX_CONVERSATION_HISTORY = 20
