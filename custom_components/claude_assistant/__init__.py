@@ -105,7 +105,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return False
 
     # Initialize action handler
-    action_handler = ActionHandler(hass, safety_level)
+    action_handler = ActionHandler(hass)
 
     # Initialize storage for logs and stats
     logs_store = Store(hass, 1, STORAGE_KEY_LOGS)
@@ -282,7 +282,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return unload_ok
 
 
-# ─── Helper: Add log entry ──────────────────────────────────────────
+# Helper: Add log entry
 
 async def _add_log_entry(hass: HomeAssistant, entry: dict) -> None:
     """Add a conversation log entry and persist."""
@@ -354,7 +354,7 @@ async def _update_stats(
     hass.async_create_task(data["stats_store"].async_save(stats))
 
 
-# ─── WebSocket handlers ─────────────────────────────────────────────
+# WebSocket handlers
 
 @websocket_api.websocket_command(
     {
@@ -429,224 +429,3 @@ async def ws_handle_chat(
         })
 
         connection.send_error(msg["id"], "chat_error", str(err))
-
-
-@websocket_api.websocket_command(
-    {vol.Required("type"): WS_TYPE_GET_ENTITIES}
-)
-@websocket_api.async_response
-async def ws_handle_get_entities(
-    hass: HomeAssistant,
-    connection: websocket_api.ActiveConnection,
-    msg: dict,
-) -> None:
-    """Return all entities grouped by domain."""
-    entities = {}
-    for entity_id, state in hass.states.async_all():
-        domain = entity_id.split(".")[0]
-        entities.setdefault(domain, []).append({
-            "entity_id": entity_id,
-            "state": state.state,
-            "name": state.attributes.get("friendly_name", entity_id),
-        })
-
-    connection.send_result(msg["id"], {"entities": entities})
-
-
-@websocket_api.websocket_command(
-    {vol.Required("type"): WS_TYPE_GET_PENDING}
-)
-@websocket_api.async_response
-async def ws_handle_get_pending(
-    hass: HomeAssistant,
-    connection: websocket_api.ActiveConnection,
-    msg: dict,
-) -> None:
-    """Return pending action confirmations."""
-    data = hass.data.get(DOMAIN, {})
-    pending = data.get("pending_actions", {})
-    connection.send_result(msg["id"], {"pending": pending})
-
-
-@websocket_api.websocket_command(
-    {
-        vol.Required("type"): WS_TYPE_CONFIRM_ACTION,
-        vol.Required("action_id"): str,
-        vol.Required("confirmed"): bool,
-    }
-)
-@websocket_api.async_response
-async def ws_handle_confirm_action(
-    hass: HomeAssistant,
-    connection: websocket_api.ActiveConnection,
-    msg: dict,
-) -> None:
-    """Handle action confirmation."""
-    data = hass.data.get(DOMAIN, {})
-    action_handler = data.get("action_handler")
-    action_id = msg["action_id"]
-    confirmed = msg["confirmed"]
-
-    if action_handler and action_id in data.get("pending_actions", {}):
-        if confirmed:
-            action = data["pending_actions"].pop(action_id)
-            result = await action_handler.execute_action(action)
-
-            await _add_log_entry(hass, {
-                "type": "action_confirmed",
-                "action": action,
-                "result": str(result)[:200],
-            })
-
-            connection.send_result(msg["id"], {"result": result})
-        else:
-            data["pending_actions"].pop(action_id, None)
-
-            await _add_log_entry(hass, {
-                "type": "action_rejected",
-                "action_id": action_id,
-            })
-
-            connection.send_result(msg["id"], {"result": "cancelled"})
-    else:
-        connection.send_error(msg["id"], "not_found", "Action not found")
-
-
-@websocket_api.websocket_command(
-    {vol.Required("type"): WS_TYPE_SETTINGS}
-)
-@websocket_api.async_response
-async def ws_handle_settings(
-    hass: HomeAssistant,
-    connection: websocket_api.ActiveConnection,
-    msg: dict,
-) -> None:
-    """Return current settings."""
-    data = hass.data.get(DOMAIN, {})
-    connection.send_result(msg["id"], {"settings": data.get("settings", {})})
-
-
-@websocket_api.websocket_command(
-    {
-        vol.Required("type"): WS_TYPE_GET_LOGS,
-        vol.Optional("limit", default=50): int,
-        vol.Optional("offset", default=0): int,
-        vol.Optional("log_type"): str,
-    }
-)
-@websocket_api.async_response
-async def ws_handle_get_logs(
-    hass: HomeAssistant,
-    connection: websocket_api.ActiveConnection,
-    msg: dict,
-) -> None:
-    """Return conversation logs."""
-    data = hass.data.get(DOMAIN, {})
-    logs = data.get("logs", [])
-
-    # Filter by type
-    log_type = msg.get("log_type")
-    if log_type:
-        logs = [l for l in logs if l.get("type") == log_type]
-
-    # Reverse (newest first), then paginate
-    logs = list(reversed(logs))
-    offset = msg.get("offset", 0)
-    limit = msg.get("limit", 50)
-    page = logs[offset : offset + limit]
-
-    connection.send_result(msg["id"], {
-        "logs": page,
-        "total": len(logs),
-        "offset": offset,
-        "limit": limit,
-    })
-
-
-@websocket_api.websocket_command(
-    {vol.Required("type"): WS_TYPE_CLEAR_LOGS}
-)
-@websocket_api.async_response
-async def ws_handle_clear_logs(
-    hass: HomeAssistant,
-    connection: websocket_api.ActiveConnection,
-    msg: dict,
-) -> None:
-    """Clear all logs."""
-    data = hass.data.get(DOMAIN, {})
-    data["logs"] = []
-    await data["logs_store"].async_save([])
-
-    await _add_log_entry(hass, {
-        "type": "system",
-        "message": "Logs cleared by user",
-    })
-
-    connection.send_result(msg["id"], {"cleared": True})
-
-
-@websocket_api.websocket_command(
-    {vol.Required("type"): WS_TYPE_GET_STATS}
-)
-@websocket_api.async_response
-async def ws_handle_get_stats(
-    hass: HomeAssistant,
-    connection: websocket_api.ActiveConnection,
-    msg: dict,
-) -> None:
-    """Return usage statistics."""
-    data = hass.data.get(DOMAIN, {})
-    stats = data.get("stats", {})
-
-    total_conv = stats.get("total_conversations", 0)
-    avg_response = 0
-    if total_conv > 0:
-        avg_response = stats.get("total_response_time_ms", 0) / total_conv
-
-    connection.send_result(msg["id"], {
-        "stats": {
-            **stats,
-            "avg_response_time_ms": round(avg_response),
-        }
-    })
-
-
-@websocket_api.websocket_command(
-    {
-        vol.Required("type"): WS_TYPE_UPDATE_SETTINGS,
-        vol.Optional("model"): str,
-        vol.Optional("temperature"): float,
-        vol.Optional("max_tokens"): int,
-        vol.Optional("system_prompt"): str,
-        vol.Optional("safety_level"): str,
-    }
-)
-@websocket_api.async_response
-async def ws_handle_update_settings(
-    hass: HomeAssistant,
-    connection: websocket_api.ActiveConnection,
-    msg: dict,
-) -> None:
-    """Update settings via WebSocket (live, without restart)."""
-    data = hass.data.get(DOMAIN, {})
-    settings = data.get("settings", {})
-
-    updated = {}
-    for key in ["model", "temperature", "max_tokens", "system_prompt", "safety_level"]:
-        if key in msg and msg[key] is not None:
-            settings[key] = msg[key]
-            updated[key] = msg[key]
-
-    # Update API client model if changed
-    if "model" in updated:
-        data["api_client"].model = updated["model"]
-
-    await _add_log_entry(hass, {
-        "type": "settings_changed",
-        "changes": updated,
-    })
-
-    connection.send_result(msg["id"], {
-        "settings": settings,
-        "updated": updated,
-    })
