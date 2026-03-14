@@ -2,44 +2,62 @@
   "config": {
     "step": {
       "user": {
-        "title": "Claude Assistant Setup",
-        "description": "Enter your Anthropic API key. Get one at {learn_more}",
+        "title": "Authentication method",
+        "description": "Choose how to connect to Claude AI",
+        "data": {
+          "auth_type": "Authentication method"
+        }
+      },
+      "api_key": {
+        "title": "Anthropic API Key",
+        "description": "Enter your API key from {api_url}",
         "data": {
           "api_key": "API Key"
         }
       },
+      "personal": {
+        "title": "Personal account",
+        "description": "{session_info}",
+        "data": {
+          "session_key": "Session Key"
+        }
+      },
       "model": {
-        "title": "Select Claude Model",
-        "description": "Choose which Claude model to use. Available: {models}",
+        "title": "Claude Model",
+        "description": "Select the AI model",
         "data": {
           "model": "Model"
         }
       },
       "safety": {
-        "title": "Safety Settings",
-        "description": "Choose the safety confirmation level for actions",
+        "title": "Safety Level",
+        "description": "Configure confirmation requirements for smart home actions",
         "data": {
-          "safety_level": "Safety Level"
+          "safety_level": "Safety level"
         }
       }
     },
     "error": {
-      "invalid_auth": "Invalid API key. Please check and try again.",
-      "cannot_connect": "Cannot connect to Anthropic API. Check your connection.",
-      "unknown": "An unexpected error occurred."
+      "cannot_connect": "Failed to connect to Anthropic API",
+      "invalid_auth": "Invalid API key",
+      "invalid_session": "Invalid session key",
+      "unknown": "Unexpected error"
     },
     "abort": {
-      "already_configured": "Claude Assistant is already configured."
+      "already_configured": "Integration is already configured"
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Claude Assistant Settings",
-        "description": "Update Claude Assistant settings",
+        "description": "Customize AI assistant parameters",
         "data": {
-          "model": "Model",
-          "safety_level": "Safety Level"
+          "model": "Claude model",
+          "temperature": "Temperature (0.0 - 1.0)",
+          "max_tokens": "Max tokens (256 - 8192)",
+          "safety_level": "Safety level",
+          "system_prompt": "System prompt"
         }
       }
     }
