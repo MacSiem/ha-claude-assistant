@@ -448,10 +448,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     websocket_api.async_register_command(hass, ws_handle_update_settings)
 
     # Register panel
-    hass.http.register_static_path(
-        "/api/panel_custom/claude-assistant",
-        hass.config.path("custom_components/claude_assistant/frontend"),
-        True,
+    from homeassistant.components.http import StaticPathConfig
+    await hass.http.async_register_static_paths(
+        [StaticPathConfig(
+            "/api/panel_custom/claude-assistant",
+            hass.config.path("custom_components/claude_assistant/frontend"),
+            True,
+        )]
     )
 
     hass.components.frontend.async_register_built_in_panel(
