@@ -17,13 +17,51 @@ class ClaudeAPIClient:
     def __init__(self, api_key: str, model: str = "claude-opus-4-20250514") -> None:
         """Initialize the Claude API client.
 
+        Note: Does NOT create the AsyncAnthropic client immediately to avoid
+        blocking SSL calls in the event loop. Call async_init() before use.
+
         Args:
             api_key: Anthropic API key
             model: Claude model to use
         """
-        self.client = AsyncAnthropic(api_key=api_key)
+        self._api_key = api_key
+        self.client: Optional[AsyncAnthropic] = None
         self.model = model if model in CLAUDE_MODELS else CLAUDE_MODELS[0]
         self._message_count = 0
+
+    async def async_init(self, hass=None) -> None:
+        """Initialize the async client in an executor to avoid blocking calls.
+
+        Args:
+            hass: HomeAssistant instance (optional, uses executor if provided)
+        """
+        if self.client is not None:
+            return
+
+        def _create_client():
+            return AsyncAnthropic(api_key=self._api_key)
+
+        if hass is not None:
+            self.client = await hass.async_add_executor_job(_create_client)
+        else:
+            import asyncio
+            loop = asyncio.get_event_loop()
+            self.client = await loop.run_in_executor(None, _create_client)
+
+    def _ensure_client(self) -> AsyncAnthropic:
+        """Ensure client is initialized.
+
+        Returns:
+            The AsyncAnthropic client
+
+        Raises:
+            RuntimeError: If async_init() was not called
+        """
+        if self.client is None:
+            raise RuntimeError(
+                "ClaudeAPIClient.async_init() must be called before use"
+            )
+        return self.client
 
     async def async_validate_api_key(self) -> bool:
         """Validate the API key by making a test call.
@@ -32,7 +70,8 @@ class ClaudeAPIClient:
             True if API key is valid, False otherwise
         """
         try:
-            await self.client.messages.create(
+            client = self._ensure_client()
+            await client.messages.create(
                 model=self.model,
                 max_tokens=10,
                 messages=[
@@ -66,6 +105,8 @@ class ClaudeAPIClient:
         try:
             self._message_count += 1
 
+            client = self._ensure_client()
+
             kwargs = {
                 "model": self.model,
                 "max_tokens": 2048,
@@ -78,7 +119,7 @@ class ClaudeAPIClient:
             if tools:
                 kwargs["tools"] = tools
 
-            response = await self.client.messages.create(**kwargs)
+            response = await client.messages.create(**kwargs)
 
             return {
                 "success": True,

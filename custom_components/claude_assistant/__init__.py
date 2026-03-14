@@ -74,8 +74,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return False
 
     try:
-        # Initialize API client
+        # Initialize API client (deferred to executor to avoid blocking SSL call)
         api_client = ClaudeAPIClient(api_key, model)
+        await api_client.async_init(hass)
 
         # Validate API key
         is_valid = await api_client.async_validate_api_key()

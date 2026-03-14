@@ -37,6 +37,11 @@ class ClaudeAssistantConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    def __init__(self) -> None:
+        """Initialize the config flow."""
+        self._api_key: str = ""
+        self._model: str = DEFAULT_MODEL
+
     async def async_step_user(
         self, user_input: Optional[dict[str, Any]] = None
     ) -> FlowResult:
@@ -56,10 +61,16 @@ class ClaudeAssistantConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 api_key = user_input[CONF_API_KEY]
                 client = ClaudeAPIClient(api_key)
 
+                # Initialize client in executor to avoid blocking SSL call
+                await client.async_init(self.hass)
+
                 is_valid = await client.async_validate_api_key()
 
                 if not is_valid:
                     raise InvalidAuth
+
+                # Store API key for later steps
+                self._api_key = api_key
 
                 # Check if entry already exists
                 await self.async_set_unique_id(DOMAIN)
@@ -102,6 +113,7 @@ class ClaudeAssistantConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             Flow result
         """
         if user_input is not None:
+            self._model = user_input.get(CONF_MODEL, DEFAULT_MODEL)
             return await self.async_step_safety()
 
         return self.async_show_form(
@@ -130,34 +142,11 @@ class ClaudeAssistantConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             Flow result
         """
         if user_input is not None:
-            # Combine all config data
-            config_data = {
-                CONF_API_KEY: self.hass.config_entries.async_entries(DOMAIN).__iter__().__next__().options.get(
-                    CONF_API_KEY,
-                    ""
-                ) if any(
-                    isinstance(x, config_entries.ConfigEntry) for x in [None]
-                ) else "",
-                CONF_MODEL: self.hass.data.get("claude_model", DEFAULT_MODEL),
-                CONF_SAFETY_LEVEL: user_input[CONF_SAFETY_LEVEL],
-            }
-
-            # Get the saved API key and model from flow context
-            api_key = self.context.get(CONF_API_KEY, "")
-            model = self.context.get(CONF_MODEL, DEFAULT_MODEL)
-
-            if not api_key:
-                # Retrieve from stored data if available
-                for entry in self.hass.config_entries.async_entries(DOMAIN):
-                    api_key = entry.data.get(CONF_API_KEY, "")
-                    model = entry.data.get(CONF_MODEL, DEFAULT_MODEL)
-                    break
-
             return self.async_create_entry(
                 title="Claude Assistant",
                 data={
-                    CONF_API_KEY: api_key or "",
-                    CONF_MODEL: model,
+                    CONF_API_KEY: self._api_key,
+                    CONF_MODEL: self._model,
                 },
                 options={
                     CONF_SAFETY_LEVEL: user_input[CONF_SAFETY_LEVEL],
