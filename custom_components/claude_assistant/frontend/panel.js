@@ -1,1092 +1,939 @@
 /**
- * Claude Assistant Sidebar Panel
- * Full chat interface with confirmation system, action controls, and settings
- * ~600 lines
+ * Claude Assistant Panel for Home Assistant
+ * Features: Chat, Logs, Statistics/Visualizations, Settings
  */
 
-customElements.define(
-  "claude-assistant-panel",
-  class ClaudeAssistantPanel extends HTMLElement {
-    constructor() {
-      super();
-      this.attachShadow({ mode: "open" });
-
-      // State
-      this._messages = [];
-      this._hass = null;
-      this._config = {};
-      this._wsConnected = false;
-      this._isWaitingResponse = false;
-      this._pendingConfirmations = new Map();
-      this._voiceEnabled = false;
-      this._voiceOutput = false;
-      this._recognition = null;
-      this._isListening = false;
-      this._expandedQuickActions = true;
-      this._expandedEntities = true;
-      this._expandedSettings = false;
-      this._selectedEntities = new Set();
-      this._confirmationLevel = "moderate";
-      this._exposedDomains = new Set(["light", "switch", "climate", "lock"]);
-    }
-
-    set hass(hass) {
-      this._hass = hass;
-      if (!this._wsConnected && hass) {
-        this.initWebSocket();
-      }
-    }
-
-    set config(config) {
-      this._config = config || {};
-    }
-
-    initWebSocket() {
-      // Placeholder for WebSocket connection to HA
-      // In production: hass.connection.subscribeMessage(...)
-      this._wsConnected = true;
-    }
-
-    initVoiceRecognition() {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SpeechRecognition) {
-        console.warn("Speech Recognition not supported");
-        return;
-      }
-
-      this._recognition = new SpeechRecognition();
-      this._recognition.continuous = false;
-      this._recognition.interimResults = true;
-
-      this._recognition.onstart = () => {
-        this._isListening = true;
-        this.updateVoiceButton();
-      };
-
-      this._recognition.onend = () => {
-        this._isListening = false;
-        this.updateVoiceButton();
-      };
-
-      this._recognition.onresult = (event) => {
-        let transcript = "";
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          transcript += event.results[i][0].transcript;
-        }
-        if (event.results[event.results.length - 1].isFinal) {
-          this.setInputValue(transcript);
-        }
-      };
-
-      this._recognition.onerror = (event) => {
-        console.error("Speech recognition error:", event.error);
-      };
-    }
-
-    connectedCallback() {
-      this.render();
-      this.setupEventListeners();
-      this.initVoiceRecognition();
-    }
-
-    setupEventListeners() {
-      const sendBtn = this.shadowRoot.querySelector(".send-btn");
-      const inputField = this.shadowRoot.querySelector(".message-input");
-      const voiceBtn = this.shadowRoot.querySelector(".voice-btn");
-      const newConvBtn = this.shadowRoot.querySelector(".new-conversation-btn");
-      const quickActionChips = this.shadowRoot.querySelectorAll(".quick-action-chip");
-      const toggleQuickActions = this.shadowRoot.querySelector(".toggle-quick-actions");
-      const toggleEntities = this.shadowRoot.querySelector(".toggle-entities");
-      const toggleSettings = this.shadowRoot.querySelector(".toggle-settings");
-      const settingsBtn = this.shadowRoot.querySelector(".settings-btn");
-      const voiceToggle = this.shadowRoot.querySelector(".voice-toggle");
-      const voiceOutputToggle = this.shadowRoot.querySelector(".voice-output-toggle");
-
-      if (sendBtn) {
-        sendBtn.addEventListener("click", () => this.sendMessage());
-      }
-
-      if (inputField) {
-        inputField.addEventListener("keypress", (e) => {
-          if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            this.sendMessage();
-          }
-        });
-      }
-
-      if (voiceBtn) {
-        voiceBtn.addEventListener("click", () => this.toggleVoiceInput());
-      }
-
-      if (newConvBtn) {
-        newConvBtn.addEventListener("click", () => this.newConversation());
-      }
-
-      if (settingsBtn) {
-        settingsBtn.addEventListener("click", () => {
-          this._expandedSettings = !this._expandedSettings;
-          this.render();
-        });
-      }
-
-      quickActionChips.forEach((chip) => {
-        chip.addEventListener("click", () => {
-          const action = chip.dataset.action;
-          this.executeQuickAction(action);
-        });
-      });
-
-      if (toggleQuickActions) {
-        toggleQuickActions.addEventListener("click", () => {
-          this._expandedQuickActions = !this._expandedQuickActions;
-          this.render();
-        });
-      }
-
-      if (toggleEntities) {
-        toggleEntities.addEventListener("click", () => {
-          this._expandedEntities = !this._expandedEntities;
-          this.render();
-        });
-      }
-
-      if (voiceToggle) {
-        voiceToggle.addEventListener("change", (e) => {
-          this._voiceEnabled = e.target.checked;
-        });
-      }
-
-      if (voiceOutputToggle) {
-        voiceOutputToggle.addEventListener("change", (e) => {
-          this._voiceOutput = e.target.checked;
-        });
-      }
-    }
-
-    toggleVoiceInput() {
-      if (!this._recognition) {
-        console.warn("Voice recognition not initialized");
-        return;
-      }
-
-      if (this._isListening) {
-        this._recognition.stop();
-      } else {
-        this._recognition.start();
-      }
-    }
-
-    updateVoiceButton() {
-      const voiceBtn = this.shadowRoot.querySelector(".voice-btn");
-      if (voiceBtn) {
-        voiceBtn.style.opacity = this._isListening ? "1" : "0.6";
-      }
-    }
-
-    setInputValue(value) {
-      const inputField = this.shadowRoot.querySelector(".message-input");
-      if (inputField) {
-        inputField.value = value;
-        inputField.focus();
-      }
-    }
-
-    executeQuickAction(action) {
-      const actions = {
-        "turn-off-lights": "Turn off all lights",
-        "lock-doors": "Lock all doors",
-        "temperature": "What's the current temperature?",
-        "energy-report": "Give me an energy usage report",
-      };
-
-      const message = actions[action] || action;
-      this.setInputValue(message);
-      this.sendMessage();
-    }
-
-    sendMessage() {
-      const inputField = this.shadowRoot.querySelector(".message-input");
-      const message = inputField.value.trim();
-
-      if (!message || this._isWaitingResponse) return;
-
-      // Add user message
-      this._messages.push({
-        id: Math.random().toString(36),
-        role: "user",
-        content: message,
-        timestamp: new Date(),
-      });
-
-      inputField.value = "";
-      inputField.focus();
-      this._isWaitingResponse = true;
-
-      this.render();
-      this.scrollToBottom();
-
-      // Dispatch event to parent (integration backend)
-      this.dispatchEvent(
-        new CustomEvent("claude-message-sent", {
-          detail: { content: message, timestamp: new Date() },
-          bubbles: true,
-          composed: true,
-        })
-      );
-
-      // Simulate response (in production: wait for WebSocket message)
-      setTimeout(() => {
-        this._messages.push({
-          id: Math.random().toString(36),
-          role: "claude",
-          content: "I'm processing your request...",
-          timestamp: new Date(),
-        });
-        this._isWaitingResponse = false;
-        this.render();
-        this.scrollToBottom();
-      }, 1000);
-    }
-
-    newConversation() {
-      if (confirm("Start a new conversation? This will clear the current chat history.")) {
-        this._messages = [];
-        this._pendingConfirmations.clear();
-        this.render();
-      }
-    }
-
-    showConfirmation(confirmationData) {
-      const id = Math.random().toString(36);
-      this._pendingConfirmations.set(id, {
-        ...confirmationData,
-        id,
-        timestamp: new Date(),
-        timeout: setTimeout(() => {
-          this._pendingConfirmations.delete(id);
-          this.render();
-        }, 5 * 60 * 1000), // 5 minutes
-      });
-
-      this.render();
-    }
-
-    approveConfirmation(id) {
-      const confirmation = this._pendingConfirmations.get(id);
-      if (!confirmation) return;
-
-      clearTimeout(confirmation.timeout);
-      this._pendingConfirmations.delete(id);
-
-      // Add approved message
-      this._messages.push({
-        id: Math.random().toString(36),
-        role: "system",
-        content: `✓ Action approved: ${confirmation.action}`,
-        timestamp: new Date(),
-        status: "approved",
-      });
-
-      // Dispatch approval event
-      this.dispatchEvent(
-        new CustomEvent("claude-confirmation-approved", {
-          detail: { id, action: confirmation.action },
-          bubbles: true,
-          composed: true,
-        })
-      );
-
-      this.render();
-    }
-
-    rejectConfirmation(id) {
-      const confirmation = this._pendingConfirmations.get(id);
-      if (!confirmation) return;
-
-      clearTimeout(confirmation.timeout);
-      this._pendingConfirmations.delete(id);
-
-      // Add rejected message
-      this._messages.push({
-        id: Math.random().toString(36),
-        role: "system",
-        content: `✗ Action rejected: ${confirmation.action}`,
-        timestamp: new Date(),
-        status: "rejected",
-      });
-
-      // Dispatch rejection event
-      this.dispatchEvent(
-        new CustomEvent("claude-confirmation-rejected", {
-          detail: { id, action: confirmation.action },
-          bubbles: true,
-          composed: true,
-        })
-      );
-
-      this.render();
-    }
-
-    scrollToBottom() {
-      setTimeout(() => {
-        const container = this.shadowRoot.querySelector(".messages-container");
-        if (container) {
-          container.scrollTop = container.scrollHeight;
-        }
-      }, 0);
-    }
-
-    escapeHtml(text) {
-      const div = document.createElement("div");
-      div.textContent = text;
-      return div.innerHTML;
-    }
-
-    formatMarkdown(text) {
-      // Simple markdown rendering (bold, code blocks, lists)
-      let html = this.escapeHtml(text);
-
-      // Bold
-      html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
-      html = html.replace(/__(.*?)__/g, "<strong>$1</strong>");
-
-      // Code blocks
-      html = html.replace(
-        /```(.*?)\n([\s\S]*?)```/g,
-        '<pre><code class="code-block">$2</code></pre>'
-      );
-
-      // Inline code
-      html = html.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
-
-      // Line breaks
-      html = html.replace(/\n/g, "<br>");
-
-      // Unordered lists
-      html = html.replace(/^- (.*?)$/gm, "<li>$1</li>");
-      html = html.replace(/(<li>.*?<\/li>)/s, "<ul>$1</ul>");
-
-      return html;
-    }
-
-    getConfirmationRiskColor(level) {
-      const colors = {
-        safe: "#4CAF50",
-        moderate: "#FF9800",
-        dangerous: "#F44336",
-        critical: "#B71C1C",
-      };
-      return colors[level] || colors.moderate;
-    }
-
-    render() {
-      const confirmationsList = Array.from(this._pendingConfirmations.values());
-
-      this.shadowRoot.innerHTML = `
-        <style>
-          :host {
-            --primary-color: var(--ha-primary-color, #03A9F4);
-            --text-primary: var(--ha-text-color, #212121);
-            --text-secondary: var(--ha-secondary-text-color, #757575);
-            --bg-color: var(--ha-card-background-color, #FFFFFF);
-            --border-color: var(--ha-divider-color, #E0E0E0);
-            --warning-color: #FF9800;
-            --danger-color: #F44336;
-            --success-color: #4CAF50;
-            font-family: var(--ha-font-family, "Roboto", sans-serif);
-          }
-
-          .panel {
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-            background: var(--bg-color);
-            color: var(--text-primary);
-          }
-
-          .panel-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 16px;
-            background: linear-gradient(135deg, var(--primary-color), var(--primary-color));
-            color: white;
-            border-bottom: 2px solid var(--border-color);
-          }
-
-          .panel-title {
-            font-size: 18px;
-            font-weight: 600;
-            margin: 0;
-          }
-
-          .panel-actions {
-            display: flex;
-            gap: 8px;
-          }
-
-          .icon-btn {
-            background: none;
-            border: none;
-            color: white;
-            cursor: pointer;
-            font-size: 18px;
-            padding: 6px;
-            opacity: 0.9;
-            transition: all 0.2s;
-            border-radius: 4px;
-          }
-
-          .icon-btn:hover {
-            opacity: 1;
-            background: rgba(255, 255, 255, 0.1);
-          }
-
-          .content {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            gap: 12px;
-            padding: 12px;
-          }
-
-          .messages-container {
-            flex: 1;
-            overflow-y: auto;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            padding-right: 4px;
-          }
-
-          .message-group {
-            display: flex;
-            margin-bottom: 8px;
-            animation: messageAppear 0.3s ease-out;
-          }
-
-          @keyframes messageAppear {
-            from {
-              opacity: 0;
-              transform: translateY(10px);
-            }
-            to {
-              opacity: 1;
-              transform: translateY(0);
-            }
-          }
-
-          .message-group.user {
-            justify-content: flex-end;
-          }
-
-          .message-bubble {
-            max-width: 75%;
-            padding: 12px 14px;
-            border-radius: 12px;
-            font-size: 13px;
-            line-height: 1.5;
-            word-wrap: break-word;
-          }
-
-          .message-group.user .message-bubble {
-            background: var(--primary-color);
-            color: white;
-            border-radius: 12px 4px 12px 12px;
-          }
-
-          .message-group.claude .message-bubble {
-            background: #E8E8E8;
-            color: var(--text-primary);
-            border-radius: 4px 12px 12px 12px;
-          }
-
-          .message-group.system .message-bubble {
-            background: rgba(76, 175, 80, 0.1);
-            color: var(--text-primary);
-            border-left: 3px solid #4CAF50;
-            border-radius: 4px;
-            font-size: 12px;
-          }
-
-          .message-group.system.rejected .message-bubble {
-            background: rgba(244, 67, 54, 0.1);
-            border-left-color: #F44336;
-          }
-
-          .message-timestamp {
-            font-size: 11px;
-            color: var(--text-secondary);
-            margin-top: 4px;
-            opacity: 0.7;
-          }
-
-          .typing-indicator {
-            display: flex;
-            gap: 4px;
-            padding: 10px 14px;
-            background: #E8E8E8;
-            border-radius: 12px;
-            width: fit-content;
-          }
-
-          .typing-dot {
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background: #999;
-            animation: typing 1.4s infinite;
-          }
-
-          .typing-dot:nth-child(2) {
-            animation-delay: 0.2s;
-          }
-
-          .typing-dot:nth-child(3) {
-            animation-delay: 0.4s;
-          }
-
-          @keyframes typing {
-            0%,
-            60%,
-            100% {
-              opacity: 0.5;
-              transform: translateY(0);
-            }
-            30% {
-              opacity: 1;
-              transform: translateY(-10px);
-            }
-          }
-
-          .confirmation-section {
-            background: rgba(255, 152, 0, 0.1);
-            border-left: 4px solid var(--warning-color);
-            border-radius: 4px;
-            padding: 12px;
-            margin-bottom: 8px;
-          }
-
-          .confirmation-header {
-            font-weight: 600;
-            color: var(--text-primary);
-            margin-bottom: 8px;
-            font-size: 13px;
-          }
-
-          .confirmation-card {
-            background: white;
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-            padding: 12px;
-            margin-bottom: 8px;
-          }
-
-          .confirmation-action {
-            font-size: 12px;
-            color: var(--text-secondary);
-            margin-bottom: 8px;
-          }
-
-          .confirmation-details {
-            background: #f5f5f5;
-            padding: 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-family: "Courier New", monospace;
-            margin-bottom: 8px;
-            max-height: 100px;
-            overflow-y: auto;
-          }
-
-          .confirmation-controls {
-            display: flex;
-            gap: 8px;
-          }
-
-          .confirm-btn,
-          .reject-btn {
-            flex: 1;
-            padding: 8px;
-            border: none;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-          }
-
-          .confirm-btn {
-            background: var(--success-color);
-            color: white;
-          }
-
-          .confirm-btn:hover {
-            background: #45a049;
-          }
-
-          .reject-btn {
-            background: var(--danger-color);
-            color: white;
-          }
-
-          .reject-btn:hover {
-            background: #da190b;
-          }
-
-          .sidebar-section {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            padding: 12px;
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            background: var(--bg-color);
-          }
-
-          .section-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            cursor: pointer;
-            user-select: none;
-            font-weight: 600;
-            font-size: 13px;
-            color: var(--text-primary);
-          }
-
-          .section-header:hover {
-            opacity: 0.8;
-          }
-
-          .section-toggle {
-            font-size: 10px;
-            opacity: 0.6;
-          }
-
-          .section-content {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            max-height: 200px;
-            overflow-y: auto;
-          }
-
-          .quick-action-chip {
-            padding: 8px 12px;
-            background: var(--primary-color);
-            color: white;
-            border: none;
-            border-radius: 20px;
-            font-size: 12px;
-            cursor: pointer;
-            transition: all 0.2s;
-            flex: 1;
-          }
-
-          .quick-action-chip:hover {
-            background: ${this.getComputedStyle(this).getPropertyValue("--primary-color")};
-            box-shadow: 0 2px 8px rgba(3, 169, 244, 0.3);
-          }
-
-          .quick-actions-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 8px;
-          }
-
-          .entity-item {
-            display: flex;
-            align-items: center;
-            padding: 8px;
-            background: #f5f5f5;
-            border-radius: 4px;
-            font-size: 12px;
-          }
-
-          .entity-icon {
-            margin-right: 8px;
-            opacity: 0.7;
-          }
-
-          .entity-name {
-            flex: 1;
-          }
-
-          .input-area {
-            display: flex;
-            gap: 8px;
-            padding: 12px;
-            border-top: 1px solid var(--border-color);
-            background: var(--bg-color);
-          }
-
-          .message-input {
-            flex: 1;
-            border: 1px solid var(--border-color);
-            border-radius: 20px;
-            padding: 10px 16px;
-            font-size: 13px;
-            font-family: inherit;
-            color: var(--text-primary);
-            background: white;
-            outline: none;
-            transition: border-color 0.2s;
-          }
-
-          .message-input:focus {
-            border-color: var(--primary-color);
-          }
-
-          .send-btn,
-          .voice-btn,
-          .new-conversation-btn {
-            background: var(--primary-color);
-            color: white;
-            border: none;
-            border-radius: 50%;
-            width: 36px;
-            height: 36px;
-            cursor: pointer;
-            font-size: 16px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s;
-            flex-shrink: 0;
-          }
-
-          .send-btn:hover,
-          .voice-btn:hover,
-          .new-conversation-btn:hover {
-            box-shadow: 0 2px 8px rgba(3, 169, 244, 0.3);
-          }
-
-          .send-btn:active,
-          .voice-btn:active {
-            transform: scale(0.95);
-          }
-
-          .settings-panel {
-            background: #f5f5f5;
-            border-radius: 4px;
-            padding: 12px;
-            margin-top: 8px;
-          }
-
-          .settings-group {
-            margin-bottom: 12px;
-          }
-
-          .settings-label {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 12px;
-            margin-bottom: 6px;
-            cursor: pointer;
-          }
-
-          .settings-label input[type="checkbox"] {
-            cursor: pointer;
-          }
-
-          .settings-select {
-            width: 100%;
-            padding: 6px;
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-            font-size: 12px;
-          }
-
-          .empty-state {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            color: var(--text-secondary);
-            text-align: center;
-          }
-
-          .empty-icon {
-            font-size: 48px;
-            margin-bottom: 12px;
-            opacity: 0.5;
-          }
-
-          ::-webkit-scrollbar {
-            width: 6px;
-          }
-
-          ::-webkit-scrollbar-track {
-            background: transparent;
-          }
-
-          ::-webkit-scrollbar-thumb {
-            background: var(--border-color);
-            border-radius: 3px;
-          }
-
-          ::-webkit-scrollbar-thumb:hover {
-            background: var(--text-secondary);
-          }
-
-          code {
-            background: #f5f5f5;
-            padding: 2px 4px;
-            border-radius: 3px;
-            font-family: "Courier New", monospace;
-            font-size: 0.9em;
-          }
-
-          .inline-code {
-            background: rgba(0, 0, 0, 0.05);
-            padding: 2px 6px;
-            border-radius: 3px;
-          }
-
-          .code-block {
-            background: #f5f5f5;
-            padding: 12px;
-            border-radius: 4px;
-            overflow-x: auto;
-            font-size: 12px;
-          }
-
-          strong {
-            font-weight: 600;
-          }
-
-          ul {
-            margin: 6px 0;
-            padding-left: 20px;
-          }
-
-          li {
-            margin: 4px 0;
-          }
-        </style>
-
-        <div class="panel">
-          <div class="panel-header">
-            <h2 class="panel-title">Claude Assistant</h2>
-            <div class="panel-actions">
-              <button class="icon-btn new-conversation-btn" aria-label="New conversation" title="New conversation">
-                📝
-              </button>
-              <button class="icon-btn settings-btn" aria-label="Settings" title="Settings">
-                ⚙️
-              </button>
-            </div>
-          </div>
-
-          <div class="content">
-            <!-- Quick Actions Section -->
-            <div class="sidebar-section">
-              <div class="section-header toggle-quick-actions">
-                <span>⚡ Quick Actions</span>
-                <span class="section-toggle">${this._expandedQuickActions ? "▼" : "▶"}</span>
-              </div>
-              ${
-                this._expandedQuickActions
-                  ? `
-                <div class="quick-actions-grid">
-                  <button class="quick-action-chip" data-action="turn-off-lights">💡 Lights off</button>
-                  <button class="quick-action-chip" data-action="lock-doors">🔒 Lock doors</button>
-                  <button class="quick-action-chip" data-action="temperature">🌡️ Temperature</button>
-                  <button class="quick-action-chip" data-action="energy-report">⚡ Energy</button>
-                </div>
-              `
-                  : ""
-              }
-            </div>
-
-            <!-- Messages Container -->
-            <div class="messages-container">
-              ${
-                this._messages.length === 0
-                  ? `
-                <div class="empty-state">
-                  <div class="empty-icon">💬</div>
-                  <p>Start a conversation with Claude</p>
-                </div>
-              `
-                  : `
-                ${this._messages
-                  .map((msg) => {
-                    if (msg.role === "system") {
-                      return `
-                      <div class="message-group system ${msg.status || ""}">
-                        <div class="message-bubble">${this.escapeHtml(msg.content)}</div>
-                      </div>
-                    `;
-                    }
-                    return `
-                      <div class="message-group ${msg.role}">
-                        <div class="message-bubble">${this.formatMarkdown(msg.content)}</div>
-                      </div>
-                    `;
-                  })
-                  .join("")}
-                ${
-                  this._isWaitingResponse
-                    ? `
-                  <div class="typing-indicator">
-                    <span class="typing-dot"></span>
-                    <span class="typing-dot"></span>
-                    <span class="typing-dot"></span>
-                  </div>
-                `
-                    : ""
-                }
-              `
-              }
-            </div>
-
-            <!-- Pending Confirmations -->
-            ${
-              confirmationsList.length > 0
-                ? `
-              <div class="confirmation-section">
-                <div class="confirmation-header">⚠️ ${confirmationsList.length} Confirmation${confirmationsList.length > 1 ? "s" : ""} Pending</div>
-                ${confirmationsList
-                  .map(
-                    (conf) => `
-                  <div class="confirmation-card">
-                    <div class="confirmation-action">
-                      <strong>${conf.action}</strong><br>
-                      ${conf.description}
-                    </div>
-                    ${
-                      Object.keys(conf.details || {}).length > 0
-                        ? `
-                      <div class="confirmation-details">
-                        ${Object.entries(conf.details || {})
-                          .map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : v}`)
-                          .join("<br>")}
-                      </div>
-                    `
-                        : ""
-                    }
-                    <div class="confirmation-controls">
-                      <button class="confirm-btn" data-id="${conf.id}">✓ Approve</button>
-                      <button class="reject-btn" data-id="${conf.id}">✗ Reject</button>
-                    </div>
-                  </div>
-                `
-                  )
-                  .join("")}
-              </div>
-            `
-                : ""
-            }
-
-            <!-- Active Entities Section -->
-            <div class="sidebar-section">
-              <div class="section-header toggle-entities">
-                <span>🏠 Active Entities</span>
-                <span class="section-toggle">${this._expandedEntities ? "▼" : "▶"}</span>
-              </div>
-              ${
-                this._expandedEntities
-                  ? `
-                <div class="section-content">
-                  ${
-                    this._hass && this._hass.states
-                      ? Array.from(this._exposedDomains)
-                          .flatMap((domain) => {
-                            return Object.entries(this._hass.states)
-                              .filter(([key]) => key.startsWith(domain + "."))
-                              .slice(0, 5)
-                              .map(([entityId, state]) => {
-                                const icon = {
-                                  light: "💡",
-                                  switch: "🔘",
-                                  lock: "🔒",
-                                  climate: "🌡️",
-                                  sensor: "📊",
-                                }[domain] || "🔧";
-                                return `
-                            <div class="entity-item">
-                              <span class="entity-icon">${icon}</span>
-                              <span class="entity-name">${entityId}</span>
-                            </div>
-                          `;
-                              });
-                          })
-                          .join("")
-                      : '<div class="entity-item">No entities available</div>'
-                  }
-                </div>
-              `
-                  : ""
-              }
-            </div>
-
-            <!-- Settings Section -->
-            ${
-              this._expandedSettings
-                ? `
-              <div class="settings-panel">
-                <div class="settings-group">
-                  <label class="settings-label">
-                    <input type="checkbox" class="voice-toggle" ${this._voiceEnabled ? "checked" : ""}>
-                    Voice Input
-                  </label>
-                </div>
-                <div class="settings-group">
-                  <label class="settings-label">
-                    <input type="checkbox" class="voice-output-toggle" ${this._voiceOutput ? "checked" : ""}>
-                    Voice Output
-                  </label>
-                </div>
-                <div class="settings-group">
-                  <label style="font-size: 12px; margin-bottom: 6px;">Confirmation Level</label>
-                  <select class="settings-select">
-                    <option value="safe">Safe only</option>
-                    <option value="moderate" selected>Moderate</option>
-                    <option value="all">All actions</option>
-                  </select>
-                </div>
-              </div>
-            `
-                : ""
-            }
-          </div>
-
-          <!-- Input Area -->
-          <div class="input-area">
-            <input
-              type="text"
-              class="message-input"
-              placeholder="Ask Claude..."
-              aria-label="Message input"
-            />
-            <button class="voice-btn" aria-label="Voice input" title="Voice input">🎤</button>
-            <button class="send-btn" aria-label="Send message" title="Send">➤</button>
-          </div>
-        </div>
-      `;
-
-      // Re-attach event listeners for confirmation buttons
-      this.shadowRoot.querySelectorAll(".confirm-btn").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const id = btn.dataset.id;
-          this.approveConfirmation(id);
-        });
-      });
-
-      this.shadowRoot.querySelectorAll(".reject-btn").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const id = btn.dataset.id;
-          this.rejectConfirmation(id);
-        });
-      });
-
-      this.setupEventListeners();
+class ClaudeAssistantPanel extends HTMLElement {
+  constructor() {
+    super();
+    this._hass = null;
+    this._config = {};
+    this._activeTab = "chat";
+    this._chatMessages = [];
+    this._logs = [];
+    this._stats = {};
+    this._settings = {};
+    this._isLoading = false;
+    this._logsTotal = 0;
+    this._logsOffset = 0;
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (!this.shadowRoot) {
+      this._render();
+      this._loadSettings();
+      this._loadStats();
     }
   }
-);
+
+  setConfig(config) {
+    this._config = config;
+  }
+
+  set panel(panel) {
+    this._config = panel.config || {};
+  }
+
+  // ─── Data Loading ──────────────────────────────────────────
+  async _loadSettings() {
+    if (!this._hass) return;
+    try {
+      const result = await this._hass.connection.sendMessagePromise({
+        type: "claude_assistant/settings",
+      });
+      this._settings = result.settings || {};
+      this._updateSettings();
+    } catch (e) {
+      console.error("Failed to load settings:", e);
+    }
+  }
+
+  async _loadStats() {
+    if (!this._hass) return;
+    try {
+      const result = await this._hass.connection.sendMessagePromise({
+        type: "claude_assistant/get_stats",
+      });
+      this._stats = result.stats || {};
+      this._updateStats();
+    } catch (e) {
+      console.error("Failed to load stats:", e);
+    }
+  }
+
+  async _loadLogs(reset = false) {
+    if (!this._hass) return;
+    if (reset) this._logsOffset = 0;
+    try {
+      const result = await this._hass.connection.sendMessagePromise({
+        type: "claude_assistant/get_logs",
+        limit: 50,
+        offset: this._logsOffset,
+      });
+      this._logs = result.logs || [];
+      this._logsTotal = result.total || 0;
+      this._updateLogs();
+    } catch (e) {
+      console.error("Failed to load logs:", e);
+    }
+  }
+
+  async _sendMessage(text) {
+    if (!this._hass || !text.trim() || this._isLoading) return;
+    this._isLoading = true;
+
+    this._chatMessages.push({ role: "user", content: text, time: new Date() });
+    this._updateChat();
+
+    try {
+      const result = await this._hass.connection.sendMessagePromise({
+        type: "claude_assistant/chat",
+        message: text,
+      });
+      this._chatMessages.push({
+        role: "assistant",
+        content: result.text,
+        time: new Date(),
+        tokens_in: result.tokens_in,
+        tokens_out: result.tokens_out,
+        response_time_ms: result.response_time_ms,
+        model: result.model,
+      });
+    } catch (e) {
+      this._chatMessages.push({
+        role: "error",
+        content: "Error: " + (e.message || e),
+        time: new Date(),
+      });
+    }
+
+    this._isLoading = false;
+    this._updateChat();
+    this._loadStats();
+  }
+
+  async _updateSettingsOnServer(key, value) {
+    if (!this._hass) return;
+    try {
+      const msg = { type: "claude_assistant/update_settings" };
+      msg[key] = value;
+      const result = await this._hass.connection.sendMessagePromise(msg);
+      this._settings = result.settings || this._settings;
+    } catch (e) {
+      console.error("Failed to update setting:", e);
+    }
+  }
+
+  async _clearLogs() {
+    if (!this._hass) return;
+    try {
+      await this._hass.connection.sendMessagePromise({
+        type: "claude_assistant/clear_logs",
+      });
+      this._logs = [];
+      this._logsTotal = 0;
+      this._updateLogs();
+    } catch (e) {
+      console.error("Failed to clear logs:", e);
+    }
+  }
+
+  // ─── Render ────────────────────────────────────────────────
+  _render() {
+    const shadow = this.attachShadow({ mode: "open" });
+    shadow.innerHTML = `
+      <style>
+        :host {
+          display: block;
+          height: 100%;
+          --primary: #6C63FF;
+          --primary-dark: #5A52D5;
+          --bg: #f5f5f5;
+          --card-bg: #ffffff;
+          --text: #1a1a2e;
+          --text-secondary: #6b7280;
+          --border: #e5e7eb;
+          --success: #10b981;
+          --warning: #f59e0b;
+          --error: #ef4444;
+          --chat-user: #6C63FF;
+          --chat-assistant: #f0f0f0;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        @media (prefers-color-scheme: dark) {
+          :host {
+            --bg: #1a1a2e;
+            --card-bg: #16213e;
+            --text: #e2e8f0;
+            --text-secondary: #94a3b8;
+            --border: #334155;
+            --chat-assistant: #1e293b;
+          }
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        .container {
+          display: flex;
+          flex-direction: column;
+          height: 100vh;
+          background: var(--bg);
+          color: var(--text);
+        }
+
+        /* Header */
+        .header {
+          display: flex;
+          align-items: center;
+          padding: 16px 24px;
+          background: var(--card-bg);
+          border-bottom: 1px solid var(--border);
+          gap: 12px;
+        }
+        .header-icon {
+          width: 36px; height: 36px;
+          background: var(--primary);
+          border-radius: 10px;
+          display: flex; align-items: center; justify-content: center;
+          color: white; font-size: 20px;
+        }
+        .header h1 { font-size: 20px; font-weight: 600; }
+        .header .subtitle { font-size: 12px; color: var(--text-secondary); }
+
+        /* Tabs */
+        .tabs {
+          display: flex;
+          background: var(--card-bg);
+          border-bottom: 1px solid var(--border);
+          padding: 0 16px;
+        }
+        .tab {
+          padding: 12px 20px;
+          cursor: pointer;
+          border-bottom: 2px solid transparent;
+          color: var(--text-secondary);
+          font-size: 14px;
+          font-weight: 500;
+          transition: all 0.2s;
+          display: flex; align-items: center; gap: 6px;
+        }
+        .tab:hover { color: var(--text); }
+        .tab.active {
+          color: var(--primary);
+          border-bottom-color: var(--primary);
+        }
+
+        /* Tab Content */
+        .tab-content { flex: 1; overflow: hidden; display: none; }
+        .tab-content.active { display: flex; flex-direction: column; }
+
+        /* ── Chat Tab ── */
+        .chat-messages {
+          flex: 1;
+          overflow-y: auto;
+          padding: 20px;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        .message {
+          max-width: 80%;
+          padding: 12px 16px;
+          border-radius: 16px;
+          font-size: 14px;
+          line-height: 1.5;
+          word-wrap: break-word;
+          white-space: pre-wrap;
+        }
+        .message.user {
+          align-self: flex-end;
+          background: var(--chat-user);
+          color: white;
+          border-bottom-right-radius: 4px;
+        }
+        .message.assistant {
+          align-self: flex-start;
+          background: var(--chat-assistant);
+          border-bottom-left-radius: 4px;
+        }
+        .message.error {
+          align-self: center;
+          background: var(--error);
+          color: white;
+          font-size: 13px;
+        }
+        .message-meta {
+          font-size: 11px;
+          color: var(--text-secondary);
+          margin-top: 4px;
+          opacity: 0.7;
+        }
+        .message.user .message-meta { color: rgba(255,255,255,0.7); }
+        .typing-indicator {
+          align-self: flex-start;
+          padding: 12px 16px;
+          background: var(--chat-assistant);
+          border-radius: 16px;
+          font-size: 14px;
+          color: var(--text-secondary);
+        }
+        .typing-indicator span {
+          animation: blink 1.4s infinite;
+        }
+        .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes blink { 0%, 60%, 100% { opacity: 0.2; } 30% { opacity: 1; } }
+
+        .chat-input-area {
+          padding: 16px 20px;
+          background: var(--card-bg);
+          border-top: 1px solid var(--border);
+          display: flex;
+          gap: 10px;
+        }
+        .chat-input-area input {
+          flex: 1;
+          padding: 12px 16px;
+          border: 1px solid var(--border);
+          border-radius: 24px;
+          font-size: 14px;
+          background: var(--bg);
+          color: var(--text);
+          outline: none;
+        }
+        .chat-input-area input:focus { border-color: var(--primary); }
+        .chat-input-area button {
+          padding: 12px 20px;
+          background: var(--primary);
+          color: white;
+          border: none;
+          border-radius: 24px;
+          cursor: pointer;
+          font-size: 14px;
+          font-weight: 500;
+          transition: background 0.2s;
+        }
+        .chat-input-area button:hover { background: var(--primary-dark); }
+        .chat-input-area button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .empty-state {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          color: var(--text-secondary);
+          gap: 8px;
+        }
+        .empty-state .icon { font-size: 48px; opacity: 0.3; }
+
+        /* ── Logs Tab ── */
+        .logs-container { flex: 1; overflow-y: auto; padding: 16px; }
+        .logs-toolbar {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 12px 16px;
+          background: var(--card-bg);
+          border-bottom: 1px solid var(--border);
+        }
+        .logs-toolbar span { font-size: 13px; color: var(--text-secondary); }
+        .btn-sm {
+          padding: 6px 12px;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--card-bg);
+          color: var(--text);
+          cursor: pointer;
+          font-size: 12px;
+        }
+        .btn-sm:hover { background: var(--bg); }
+        .btn-danger { border-color: var(--error); color: var(--error); }
+
+        .log-entry {
+          padding: 12px 16px;
+          border-bottom: 1px solid var(--border);
+          font-size: 13px;
+        }
+        .log-entry:last-child { border-bottom: none; }
+        .log-time { color: var(--text-secondary); font-size: 11px; font-family: monospace; }
+        .log-type {
+          display: inline-block;
+          padding: 2px 8px;
+          border-radius: 4px;
+          font-size: 11px;
+          font-weight: 600;
+          text-transform: uppercase;
+          margin: 0 6px;
+        }
+        .log-type.conversation { background: #dbeafe; color: #1d4ed8; }
+        .log-type.assist_conversation { background: #d1fae5; color: #065f46; }
+        .log-type.error { background: #fee2e2; color: #b91c1c; }
+        .log-type.action_confirmed { background: #fef3c7; color: #92400e; }
+        .log-type.action_rejected { background: #fce7f3; color: #9d174d; }
+        .log-type.settings_changed { background: #e0e7ff; color: #4338ca; }
+        .log-type.system { background: #f3f4f6; color: #374151; }
+        .log-user-msg { margin-top: 4px; color: var(--text); }
+        .log-assistant-msg { margin-top: 2px; color: var(--text-secondary); font-style: italic; }
+        .log-tokens { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+
+        /* ── Stats Tab ── */
+        .stats-container { flex: 1; overflow-y: auto; padding: 20px; }
+        .stats-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 16px;
+          margin-bottom: 24px;
+        }
+        .stat-card {
+          background: var(--card-bg);
+          border-radius: 12px;
+          padding: 20px;
+          border: 1px solid var(--border);
+        }
+        .stat-label { font-size: 12px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
+        .stat-value { font-size: 28px; font-weight: 700; margin-top: 4px; color: var(--primary); }
+        .stat-sub { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+
+        .chart-card {
+          background: var(--card-bg);
+          border-radius: 12px;
+          padding: 20px;
+          border: 1px solid var(--border);
+          margin-bottom: 16px;
+        }
+        .chart-card h3 { font-size: 14px; margin-bottom: 12px; }
+        .chart-bar-container { display: flex; align-items: flex-end; gap: 4px; height: 120px; }
+        .chart-bar {
+          flex: 1;
+          background: var(--primary);
+          border-radius: 4px 4px 0 0;
+          min-height: 2px;
+          position: relative;
+          transition: height 0.3s;
+          opacity: 0.8;
+        }
+        .chart-bar:hover { opacity: 1; }
+        .chart-bar-label {
+          position: absolute;
+          bottom: -18px;
+          left: 50%;
+          transform: translateX(-50%);
+          font-size: 10px;
+          color: var(--text-secondary);
+        }
+        .chart-bar-value {
+          position: absolute;
+          top: -18px;
+          left: 50%;
+          transform: translateX(-50%);
+          font-size: 10px;
+          color: var(--text-secondary);
+          white-space: nowrap;
+        }
+
+        .model-usage-list { margin-top: 8px; }
+        .model-usage-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 8px;
+          font-size: 13px;
+        }
+        .model-usage-bar {
+          height: 8px;
+          background: var(--primary);
+          border-radius: 4px;
+          transition: width 0.3s;
+        }
+
+        /* ── Settings Tab ── */
+        .settings-container { flex: 1; overflow-y: auto; padding: 20px; }
+        .settings-section {
+          background: var(--card-bg);
+          border-radius: 12px;
+          padding: 20px;
+          border: 1px solid var(--border);
+          margin-bottom: 16px;
+        }
+        .settings-section h3 {
+          font-size: 15px;
+          margin-bottom: 16px;
+          padding-bottom: 8px;
+          border-bottom: 1px solid var(--border);
+        }
+        .setting-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 10px 0;
+        }
+        .setting-row + .setting-row { border-top: 1px solid var(--border); }
+        .setting-label { font-size: 14px; }
+        .setting-desc { font-size: 12px; color: var(--text-secondary); }
+        .setting-row select,
+        .setting-row input[type="number"],
+        .setting-row input[type="range"] {
+          padding: 8px 12px;
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          background: var(--bg);
+          color: var(--text);
+          font-size: 14px;
+          min-width: 180px;
+        }
+        .setting-row textarea {
+          width: 100%;
+          min-height: 100px;
+          padding: 12px;
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          background: var(--bg);
+          color: var(--text);
+          font-size: 13px;
+          font-family: inherit;
+          resize: vertical;
+          margin-top: 8px;
+        }
+        .setting-full { flex-direction: column; align-items: stretch; gap: 4px; }
+        .temp-display { font-size: 14px; font-weight: 600; color: var(--primary); min-width: 40px; text-align: right; }
+        .auth-badge {
+          display: inline-block;
+          padding: 4px 10px;
+          border-radius: 6px;
+          font-size: 12px;
+          font-weight: 600;
+        }
+        .auth-badge.api_key { background: #dbeafe; color: #1d4ed8; }
+        .auth-badge.personal_account { background: #d1fae5; color: #065f46; }
+      </style>
+
+      <div class="container">
+        <div class="header">
+          <div class="header-icon">🤖</div>
+          <div>
+            <h1>Claude Assistant</h1>
+            <div class="subtitle">AI-powered smart home assistant</div>
+          </div>
+        </div>
+
+        <div class="tabs">
+          <div class="tab active" data-tab="chat">💬 Chat</div>
+          <div class="tab" data-tab="logs">📋 Logi</div>
+          <div class="tab" data-tab="stats">📊 Statystyki</div>
+          <div class="tab" data-tab="settings">⚙️ Ustawienia</div>
+        </div>
+
+        <!-- Chat Tab -->
+        <div class="tab-content active" id="tab-chat">
+          <div class="chat-messages" id="chat-messages">
+            <div class="empty-state">
+              <div class="icon">🤖</div>
+              <div>Napisz wiadomość, aby rozpocząć rozmowę z Claude</div>
+            </div>
+          </div>
+          <div class="chat-input-area">
+            <input type="text" id="chat-input" placeholder="Napisz wiadomość..." autocomplete="off" />
+            <button id="chat-send">Wyślij</button>
+          </div>
+        </div>
+
+        <!-- Logs Tab -->
+        <div class="tab-content" id="tab-logs">
+          <div class="logs-toolbar">
+            <span id="logs-count">0 wpisów</span>
+            <div style="display:flex;gap:8px;">
+              <button class="btn-sm" id="logs-refresh">Odśwież</button>
+              <button class="btn-sm btn-danger" id="logs-clear">Wyczyść</button>
+            </div>
+          </div>
+          <div class="logs-container" id="logs-list"></div>
+        </div>
+
+        <!-- Stats Tab -->
+        <div class="tab-content" id="tab-stats">
+          <div class="stats-container" id="stats-content"></div>
+        </div>
+
+        <!-- Settings Tab -->
+        <div class="tab-content" id="tab-settings">
+          <div class="settings-container" id="settings-content"></div>
+        </div>
+      </div>
+    `;
+
+    this._setupEvents();
+  }
+
+  _setupEvents() {
+    const shadow = this.shadowRoot;
+
+    // Tab switching
+    shadow.querySelectorAll(".tab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        shadow.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+        shadow.querySelectorAll(".tab-content").forEach((c) => c.classList.remove("active"));
+        tab.classList.add("active");
+        const tabId = tab.dataset.tab;
+        shadow.getElementById("tab-" + tabId).classList.add("active");
+        this._activeTab = tabId;
+
+        if (tabId === "logs") this._loadLogs(true);
+        if (tabId === "stats") this._loadStats();
+        if (tabId === "settings") this._loadSettings();
+      });
+    });
+
+    // Chat
+    const chatInput = shadow.getElementById("chat-input");
+    const chatSend = shadow.getElementById("chat-send");
+
+    chatSend.addEventListener("click", () => {
+      this._sendMessage(chatInput.value);
+      chatInput.value = "";
+    });
+    chatInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        this._sendMessage(chatInput.value);
+        chatInput.value = "";
+      }
+    });
+
+    // Logs
+    shadow.getElementById("logs-refresh").addEventListener("click", () => this._loadLogs(true));
+    shadow.getElementById("logs-clear").addEventListener("click", () => {
+      if (confirm("Czy na pewno chcesz wyczyścić wszystkie logi?")) {
+        this._clearLogs();
+      }
+    });
+  }
+
+  // ─── UI Updates ────────────────────────────────────────────
+  _updateChat() {
+    const container = this.shadowRoot.getElementById("chat-messages");
+    if (!container) return;
+
+    let html = "";
+    if (this._chatMessages.length === 0) {
+      html = `<div class="empty-state">
+        <div class="icon">🤖</div>
+        <div>Napisz wiadomość, aby rozpocząć rozmowę z Claude</div>
+      </div>`;
+    } else {
+      for (const msg of this._chatMessages) {
+        const time = msg.time ? new Date(msg.time).toLocaleTimeString("pl-PL") : "";
+        const meta = [];
+        if (msg.tokens_in) meta.push(msg.tokens_in + "→ tok");
+        if (msg.tokens_out) meta.push(msg.tokens_out + "← tok");
+        if (msg.response_time_ms) meta.push(msg.response_time_ms + "ms");
+        if (msg.model) meta.push(msg.model.split("-").slice(0, 2).join("-"));
+
+        html += `<div class="message ${msg.role}">
+          ${this._escapeHtml(msg.content)}
+          <div class="message-meta">${time}${meta.length ? " · " + meta.join(" · ") : ""}</div>
+        </div>`;
+      }
+      if (this._isLoading) {
+        html += `<div class="typing-indicator"><span>●</span><span>●</span><span>●</span></div>`;
+      }
+    }
+
+    container.innerHTML = html;
+    container.scrollTop = container.scrollHeight;
+
+    const sendBtn = this.shadowRoot.getElementById("chat-send");
+    if (sendBtn) sendBtn.disabled = this._isLoading;
+  }
+
+  _updateLogs() {
+    const container = this.shadowRoot.getElementById("logs-list");
+    const counter = this.shadowRoot.getElementById("logs-count");
+    if (!container) return;
+
+    counter.textContent = this._logsTotal + " wpisów";
+
+    if (this._logs.length === 0) {
+      container.innerHTML = `<div class="empty-state" style="padding:40px"><div>Brak logów</div></div>`;
+      return;
+    }
+
+    let html = "";
+    for (const log of this._logs) {
+      const time = log.timestamp
+        ? new Date(log.timestamp).toLocaleString("pl-PL")
+        : "—";
+      const type = log.type || "unknown";
+
+      html += `<div class="log-entry">
+        <span class="log-time">${time}</span>
+        <span class="log-type ${type}">${type.replace("_", " ")}</span>`;
+
+      if (log.user_message) {
+        html += `<div class="log-user-msg">👤 ${this._escapeHtml(log.user_message.substring(0, 200))}</div>`;
+      }
+      if (log.assistant_message) {
+        html += `<div class="log-assistant-msg">🤖 ${this._escapeHtml(log.assistant_message.substring(0, 200))}</div>`;
+      }
+      if (log.error) {
+        html += `<div class="log-user-msg" style="color:var(--error)">❌ ${this._escapeHtml(log.error)}</div>`;
+      }
+      if (log.message) {
+        html += `<div class="log-user-msg">${this._escapeHtml(log.message)}</div>`;
+      }
+      if (log.changes) {
+        html += `<div class="log-user-msg">Zmieniono: ${this._escapeHtml(JSON.stringify(log.changes))}</div>`;
+      }
+      if (log.tokens_in || log.tokens_out) {
+        html += `<div class="log-tokens">Tokeny: ${log.tokens_in || 0}→ / ${log.tokens_out || 0}← | ${log.response_time_ms || 0}ms${log.model ? " | " + log.model : ""}</div>`;
+      }
+
+      html += `</div>`;
+    }
+
+    container.innerHTML = html;
+  }
+
+  _updateStats() {
+    const container = this.shadowRoot.getElementById("stats-content");
+    if (!container) return;
+
+    const s = this._stats;
+    const avgTime = s.avg_response_time_ms || 0;
+    const totalTokens = (s.total_tokens_in || 0) + (s.total_tokens_out || 0);
+    const todayTokens = (s.tokens_today_in || 0) + (s.tokens_today_out || 0);
+
+    // Hourly chart
+    let hourlyBars = "";
+    const hourly = s.hourly_usage || {};
+    const maxHourly = Math.max(...Object.values(hourly), 1);
+    for (let h = 0; h < 24; h++) {
+      const key = String(h).padStart(2, "0");
+      const val = hourly[key] || 0;
+      const height = Math.max((val / maxHourly) * 100, 2);
+      hourlyBars += `<div class="chart-bar" style="height:${height}%">
+        ${val > 0 ? `<div class="chart-bar-value">${val}</div>` : ""}
+        <div class="chart-bar-label">${key}</div>
+      </div>`;
+    }
+
+    // Daily history chart
+    let dailyBars = "";
+    const daily = s.daily_history || [];
+    const maxDaily = Math.max(...daily.map((d) => d.conversations), 1);
+    for (const d of daily.slice(-14)) {
+      const height = Math.max((d.conversations / maxDaily) * 100, 2);
+      const label = d.date ? d.date.slice(5) : "?";
+      dailyBars += `<div class="chart-bar" style="height:${height}%">
+        ${d.conversations > 0 ? `<div class="chart-bar-value">${d.conversations}</div>` : ""}
+        <div class="chart-bar-label">${label}</div>
+      </div>`;
+    }
+
+    // Model usage
+    let modelHtml = "";
+    const models = s.model_usage || {};
+    const totalModelUse = Object.values(models).reduce((a, b) => a + b, 0) || 1;
+    for (const [model, count] of Object.entries(models)) {
+      const pct = Math.round((count / totalModelUse) * 100);
+      const shortName = model.split("-").slice(0, 2).join("-");
+      modelHtml += `<div class="model-usage-item">
+        <span style="min-width:120px">${shortName}</span>
+        <div style="flex:1;background:var(--border);border-radius:4px;height:8px;">
+          <div class="model-usage-bar" style="width:${pct}%"></div>
+        </div>
+        <span>${count} (${pct}%)</span>
+      </div>`;
+    }
+
+    container.innerHTML = `
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Rozmowy dzisiaj</div>
+          <div class="stat-value">${s.conversations_today || 0}</div>
+          <div class="stat-sub">Łącznie: ${s.total_conversations || 0}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Tokeny dzisiaj</div>
+          <div class="stat-value">${this._formatNumber(todayTokens)}</div>
+          <div class="stat-sub">↗ ${s.tokens_today_in || 0} / ↙ ${s.tokens_today_out || 0}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Łączne tokeny</div>
+          <div class="stat-value">${this._formatNumber(totalTokens)}</div>
+          <div class="stat-sub">↗ ${this._formatNumber(s.total_tokens_in || 0)} / ↙ ${this._formatNumber(s.total_tokens_out || 0)}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Śr. czas odpowiedzi</div>
+          <div class="stat-value">${this._formatNumber(avgTime)}<span style="font-size:14px">ms</span></div>
+          <div class="stat-sub">Na podstawie ${s.total_conversations || 0} rozmów</div>
+        </div>
+      </div>
+
+      <div class="chart-card">
+        <h3>Aktywność godzinowa (dzisiaj)</h3>
+        <div class="chart-bar-container" style="margin-bottom:24px;">
+          ${hourlyBars || '<div style="color:var(--text-secondary);font-size:13px;">Brak danych</div>'}
+        </div>
+      </div>
+
+      ${daily.length > 0 ? `
+      <div class="chart-card">
+        <h3>Historia dzienna (ostatnie 14 dni)</h3>
+        <div class="chart-bar-container" style="margin-bottom:24px;">
+          ${dailyBars}
+        </div>
+      </div>` : ""}
+
+      <div class="chart-card">
+        <h3>Użycie modeli</h3>
+        <div class="model-usage-list">
+          ${modelHtml || '<div style="color:var(--text-secondary);font-size:13px;">Brak danych</div>'}
+        </div>
+      </div>
+    `;
+  }
+
+  _updateSettings() {
+    const container = this.shadowRoot.getElementById("settings-content");
+    if (!container) return;
+
+    const s = this._settings;
+    const models = ["claude-opus-4-20250514", "claude-sonnet-4-20250514", "claude-haiku-3-5-20241022"];
+    const safetyLevels = {
+      all_actions: "Potwierdzaj wszystkie",
+      dangerous_only: "Tylko niebezpieczne",
+      none: "Bez potwierdzeń",
+    };
+
+    const modelOptions = models.map((m) => {
+      const sel = m === s.model ? "selected" : "";
+      return `<option value="${m}" ${sel}>${m.split("-").slice(0, 2).join("-")}</option>`;
+    }).join("");
+
+    const safetyOptions = Object.entries(safetyLevels).map(([k, v]) => {
+      const sel = k === s.safety_level ? "selected" : "";
+      return `<option value="${k}" ${sel}>${v}</option>`;
+    }).join("");
+
+    const authLabel = s.auth_type === "personal_account" ? "Konto osobiste" : "Klucz API";
+    const authClass = s.auth_type || "api_key";
+
+    container.innerHTML = `
+      <div class="settings-section">
+        <h3>Autoryzacja</h3>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Metoda logowania</div>
+            <div class="setting-desc">Zmiana wymaga rekonfiguracji integracji</div>
+          </div>
+          <span class="auth-badge ${authClass}">${authLabel}</span>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Model AI</h3>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Model Claude</div>
+            <div class="setting-desc">Wpływa na jakość i szybkość odpowiedzi</div>
+          </div>
+          <select id="set-model">${modelOptions}</select>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Parametry generowania</h3>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Temperatura</div>
+            <div class="setting-desc">Niższa = bardziej precyzyjne, wyższa = bardziej kreatywne</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input type="range" id="set-temperature" min="0" max="1" step="0.05" value="${s.temperature || 0.7}" style="min-width:120px" />
+            <span class="temp-display" id="temp-val">${s.temperature || 0.7}</span>
+          </div>
+        </div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Maksymalna liczba tokenów</div>
+            <div class="setting-desc">Limit długości odpowiedzi (256 - 8192)</div>
+          </div>
+          <input type="number" id="set-max-tokens" min="256" max="8192" step="256" value="${s.max_tokens || 2048}" />
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Bezpieczeństwo</h3>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Poziom potwierdzeń</div>
+            <div class="setting-desc">Kiedy pytać o potwierdzenie akcji smart home</div>
+          </div>
+          <select id="set-safety">${safetyOptions}</select>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Prompt systemowy</h3>
+        <div class="setting-row setting-full">
+          <div>
+            <div class="setting-label">Instrukcje dla Claude</div>
+            <div class="setting-desc">Określ zachowanie i rolę asystenta</div>
+          </div>
+          <textarea id="set-prompt">${this._escapeHtml(s.system_prompt || "")}</textarea>
+        </div>
+      </div>
+    `;
+
+    // Bind events
+    const self = this;
+
+    container.querySelector("#set-model").addEventListener("change", function () {
+      self._updateSettingsOnServer("model", this.value);
+    });
+
+    const tempSlider = container.querySelector("#set-temperature");
+    const tempVal = container.querySelector("#temp-val");
+    tempSlider.addEventListener("input", function () {
+      tempVal.textContent = this.value;
+    });
+    tempSlider.addEventListener("change", function () {
+      self._updateSettingsOnServer("temperature", parseFloat(this.value));
+    });
+
+    container.querySelector("#set-max-tokens").addEventListener("change", function () {
+      self._updateSettingsOnServer("max_tokens", parseInt(this.value));
+    });
+
+    container.querySelector("#set-safety").addEventListener("change", function () {
+      self._updateSettingsOnServer("safety_level", this.value);
+    });
+
+    let promptTimeout;
+    container.querySelector("#set-prompt").addEventListener("input", function () {
+      clearTimeout(promptTimeout);
+      const val = this.value;
+      promptTimeout = setTimeout(() => {
+        self._updateSettingsOnServer("system_prompt", val);
+      }, 1000);
+    });
+  }
+
+  // ─── Helpers ───────────────────────────────────────────────
+  _escapeHtml(str) {
+    if (!str) return "";
+    return str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  _formatNumber(n) {
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
+    if (n >= 1000) return (n / 1000).toFixed(1) + "K";
+    return String(n);
+  }
+}
+
+customElements.define("claude-assistant-panel", ClaudeAssistantPanel);
