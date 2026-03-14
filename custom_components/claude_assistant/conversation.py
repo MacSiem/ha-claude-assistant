@@ -1,11 +1,17 @@
-"""Conversation agent for Claude Assistant integration."""
+"""Conversation platform for Claude Assistant integration."""
 
 import logging
 from typing import Any, Optional
 
-from homeassistant.components import conversation
+from homeassistant.components.conversation import (
+    ConversationEntity,
+    ConversationInput,
+    ConversationResult,
+)
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.intent import IntentHandler
+from homeassistant.helpers import intent
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .api_client import ClaudeAPIClient
 from .const import DOMAIN
@@ -13,29 +19,62 @@ from .const import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 
-class ClaudeConversationAgent(conversation.AbstractConversationAgent):
-    """Conversation agent powered by Claude."""
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up Claude conversation entity from a config entry.
 
-    def __init__(self, hass: HomeAssistant, api_client: ClaudeAPIClient) -> None:
-        """Initialize the conversation agent.
+    Args:
+        hass: Home Assistant instance
+        config_entry: Configuration entry
+        async_add_entities: Callback to add entities
+    """
+    data = hass.data[DOMAIN]
+    api_client = data["api_client"]
+
+    async_add_entities(
+        [ClaudeConversationEntity(hass, config_entry, api_client)]
+    )
+
+    _LOGGER.info("Claude conversation entity registered")
+
+
+class ClaudeConversationEntity(ConversationEntity):
+    """Conversation entity powered by Claude."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Claude Assistant"
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        config_entry: ConfigEntry,
+        api_client: ClaudeAPIClient,
+    ) -> None:
+        """Initialize the conversation entity.
 
         Args:
             hass: Home Assistant instance
+            config_entry: Configuration entry
             api_client: Claude API client
         """
         self.hass = hass
-        self.api_client = api_client
+        self._api_client = api_client
+        self._config_entry = config_entry
+        self._attr_unique_id = config_entry.entry_id
         self._conversation_history: list[dict[str, str]] = []
 
     @property
-    def supported_languages(self) -> list[str]:
+    def supported_languages(self) -> list[str] | str:
         """Return list of supported languages."""
-        return ["en"]
+        return "*"
 
     async def async_process(
         self,
-        user_input: conversation.ConversationInput,
-    ) -> conversation.ConversationResult:
+        user_input: ConversationInput,
+    ) -> ConversationResult:
         """Process a user input and generate a response.
 
         Args:
@@ -48,23 +87,20 @@ class ClaudeConversationAgent(conversation.AbstractConversationAgent):
             # Get Home Assistant state for context
             ha_state = self._get_ha_state()
 
-            # Get Claude configuration
-            config_entry = None
-            if DOMAIN in self.hass.data:
-                config_entry = self.hass.data[DOMAIN].get("config_entry")
-
+            # Get safety level
             safety_level = "dangerous_only"
-            if config_entry:
-                safety_level = config_entry.options.get(
+            if self._config_entry:
+                safety_level = self._config_entry.options.get(
                     "safety_level", "dangerous_only"
                 )
 
             # Build system prompt
-            system_prompt = self.api_client.build_system_prompt(
+            system_prompt = self._api_client.build_system_prompt(
                 ha_state,
                 custom_instructions=(
                     "You are assisting via the Home Assistant voice assistant. "
-                    "Be concise and direct. Focus on answering the user's question."
+                    "Be concise and direct. Focus on answering the user's question. "
+                    f"Respond in the user's language: {user_input.language}."
                 ),
             )
 
@@ -77,23 +113,26 @@ class ClaudeConversationAgent(conversation.AbstractConversationAgent):
             )
 
             # Get tools if action execution is needed
-            tools = self.api_client.build_tools()
+            tools = self._api_client.build_tools()
 
             # Send to Claude
-            response = await self.api_client.async_send_message(
+            response = await self._api_client.async_send_message(
                 messages=self._conversation_history,
                 system_prompt=system_prompt,
                 tools=tools,
             )
 
             if not response.get("success"):
-                return conversation.ConversationResult(
-                    response=f"Error: {response.get('error', 'Unknown error')}",
+                error_text = f"Error: {response.get('error', 'Unknown error')}"
+                intent_response = intent.IntentResponse(language=user_input.language)
+                intent_response.async_set_speech(error_text)
+                return ConversationResult(
+                    response=intent_response,
                     conversation_id=user_input.conversation_id,
                 )
 
             # Extract text response
-            text_response = self.api_client.extract_text_response(response)
+            text_response = self._api_client.extract_text_response(response)
 
             # Add Claude's response to history
             self._conversation_history.append(
@@ -108,20 +147,26 @@ class ClaudeConversationAgent(conversation.AbstractConversationAgent):
                 self._conversation_history = self._conversation_history[-20:]
 
             # Process tool calls if any
-            tool_calls = self.api_client.extract_tool_calls(response)
+            tool_calls = self._api_client.extract_tool_calls(response)
             if tool_calls:
                 _LOGGER.debug("Claude requested tool calls: %s", tool_calls)
-                # Tool calls will be handled by the action handler
 
-            return conversation.ConversationResult(
-                response=text_response,
+            # Return conversation result
+            intent_response = intent.IntentResponse(language=user_input.language)
+            intent_response.async_set_speech(text_response)
+            return ConversationResult(
+                response=intent_response,
                 conversation_id=user_input.conversation_id,
             )
 
         except Exception as err:  # pylint: disable=broad-except
             _LOGGER.error("Error processing conversation: %s", err)
-            return conversation.ConversationResult(
-                response="I encountered an error processing your request. Please try again.",
+            intent_response = intent.IntentResponse(language=user_input.language)
+            intent_response.async_set_speech(
+                "I encountered an error processing your request. Please try again."
+            )
+            return ConversationResult(
+                response=intent_response,
                 conversation_id=user_input.conversation_id,
             )
 
@@ -142,26 +187,3 @@ class ClaudeConversationAgent(conversation.AbstractConversationAgent):
                 }
 
         return state_dict
-
-
-async def async_setup_agent(
-    hass: HomeAssistant,
-    api_client: ClaudeAPIClient,
-) -> None:
-    """Set up the Claude conversation agent.
-
-    Args:
-        hass: Home Assistant instance
-        api_client: Claude API client
-    """
-    agent = ClaudeConversationAgent(hass, api_client)
-
-    conversation.async_register_agent(
-        hass,
-        DOMAIN,
-        agent,
-        name="Claude Assistant",
-        description="Control your smart home with Claude AI",
-    )
-
-    _LOGGER.info("Claude conversation agent registered")
