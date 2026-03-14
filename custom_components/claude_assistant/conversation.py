@@ -1,6 +1,7 @@
 """Conversation platform for Claude Assistant integration."""
 
 import logging
+import time
 from typing import Any, Optional
 
 from homeassistant.components.conversation import (
@@ -14,7 +15,13 @@ from homeassistant.helpers import intent
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .api_client import ClaudeAPIClient
-from .const import DOMAIN
+from .const import (
+    DEFAULT_MAX_TOKENS,
+    DEFAULT_SYSTEM_PROMPT,
+    DEFAULT_TEMPERATURE,
+    DOMAIN,
+    MAX_CONVERSATION_HISTORY,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -24,25 +31,18 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up Claude conversation entity from a config entry.
-
-    Args:
-        hass: Home Assistant instance
-        config_entry: Configuration entry
-        async_add_entities: Callback to add entities
-    """
+    """Set up Claude conversation entity from a config entry."""
     data = hass.data[DOMAIN]
     api_client = data["api_client"]
 
     async_add_entities(
         [ClaudeConversationEntity(hass, config_entry, api_client)]
     )
-
     _LOGGER.info("Claude conversation entity registered")
 
 
 class ClaudeConversationEntity(ConversationEntity):
-    """Conversation entity powered by Claude."""
+    """Conversation entity for Claude Assistant."""
 
     _attr_has_entity_name = True
     _attr_name = "Claude Assistant"
@@ -53,137 +53,124 @@ class ClaudeConversationEntity(ConversationEntity):
         config_entry: ConfigEntry,
         api_client: ClaudeAPIClient,
     ) -> None:
-        """Initialize the conversation entity.
-
-        Args:
-            hass: Home Assistant instance
-            config_entry: Configuration entry
-            api_client: Claude API client
-        """
+        """Initialize the conversation entity."""
         self.hass = hass
         self._api_client = api_client
         self._config_entry = config_entry
         self._attr_unique_id = config_entry.entry_id
-        self._conversation_history: list[dict[str, str]] = []
+        self._conversation_history: list[dict] = []
 
     @property
     def supported_languages(self) -> list[str] | str:
-        """Return list of supported languages."""
+        """Return supported languages (all)."""
         return "*"
 
-    async def async_process(
-        self,
-        user_input: ConversationInput,
-    ) -> ConversationResult:
-        """Process a user input and generate a response.
+    def _get_settings(self) -> dict:
+        """Get current settings from integration data."""
+        data = self.hass.data.get(DOMAIN, {})
+        return data.get("settings", {})
 
-        Args:
-            user_input: The user input to process
+    def _build_system_prompt(self) -> str:
+        """Build system prompt including HA entity context."""
+        settings = self._get_settings()
+        base_prompt = settings.get("system_prompt", DEFAULT_SYSTEM_PROMPT)
 
-        Returns:
-            Conversation result with response
-        """
-        try:
-            # Get Home Assistant state for context
-            ha_state = self._get_ha_state()
-
-            # Get safety level
-            safety_level = "dangerous_only"
-            if self._config_entry:
-                safety_level = self._config_entry.options.get(
-                    "safety_level", "dangerous_only"
-                )
-
-            # Build system prompt
-            system_prompt = self._api_client.build_system_prompt(
-                ha_state,
-                custom_instructions=(
-                    "You are assisting via the Home Assistant voice assistant. "
-                    "Be concise and direct. Focus on answering the user's question. "
-                    f"Respond in the user's language: {user_input.language}."
-                ),
+        # Gather entity info for context
+        entity_summary = []
+        for state in self.hass.states.async_all():
+            friendly = state.attributes.get("friendly_name", state.entity_id)
+            entity_summary.append(
+                f"- {friendly} ({state.entity_id}): {state.state}"
             )
+
+        entities_text = "\n".join(entity_summary[:100])
+
+        return (
+            f"{base_prompt}\n\n"
+            f"## Available Home Assistant Entities:\n{entities_text}\n\n"
+            f"Current time: {self.hass.states.get('sensor.date_time_iso', 'unknown')}"
+        )
+
+    async def async_process(
+        self, user_input: ConversationInput
+    ) -> ConversationResult:
+        """Process a sentence."""
+        settings = self._get_settings()
+        temperature = settings.get("temperature", DEFAULT_TEMPERATURE)
+        max_tokens = settings.get("max_tokens", DEFAULT_MAX_TOKENS)
+
+        start_time = time.time()
+
+        try:
+            # Build system prompt with HA context
+            system_prompt = self._build_system_prompt()
 
             # Add to conversation history
-            self._conversation_history.append(
-                {
-                    "role": "user",
-                    "content": user_input.text,
-                }
-            )
+            self._conversation_history.append({
+                "role": "user",
+                "content": user_input.text,
+            })
 
-            # Get tools if action execution is needed
-            tools = self._api_client.build_tools()
+            # Trim history
+            if len(self._conversation_history) > MAX_CONVERSATION_HISTORY:
+                self._conversation_history = self._conversation_history[
+                    -MAX_CONVERSATION_HISTORY:
+                ]
 
             # Send to Claude
-            response = await self._api_client.async_send_message(
-                messages=self._conversation_history,
+            response = await self._api_client.send_message(
+                message=user_input.text,
                 system_prompt=system_prompt,
-                tools=tools,
+                conversation_history=self._conversation_history[:-1],
+                temperature=temperature,
+                max_tokens=max_tokens,
             )
 
-            if not response.get("success"):
-                error_text = f"Error: {response.get('error', 'Unknown error')}"
-                intent_response = intent.IntentResponse(language=user_input.language)
-                intent_response.async_set_speech(error_text)
-                return ConversationResult(
-                    response=intent_response,
-                    conversation_id=user_input.conversation_id,
+            text_response = response.get("text", "Sorry, I could not generate a response.")
+            tokens_in = response.get("input_tokens", 0)
+            tokens_out = response.get("output_tokens", 0)
+            elapsed_ms = int((time.time() - start_time) * 1000)
+
+            # Add assistant response to history
+            self._conversation_history.append({
+                "role": "assistant",
+                "content": text_response,
+            })
+
+            # Log and update stats via integration data
+            data = self.hass.data.get(DOMAIN, {})
+            if data:
+                # Import helpers from __init__
+                from . import _add_log_entry, _update_stats
+
+                await _add_log_entry(self.hass, {
+                    "type": "assist_conversation",
+                    "user_message": user_input.text,
+                    "assistant_message": text_response[:500],
+                    "model": settings.get("model", "unknown"),
+                    "tokens_in": tokens_in,
+                    "tokens_out": tokens_out,
+                    "response_time_ms": elapsed_ms,
+                    "language": user_input.language,
+                })
+
+                await _update_stats(
+                    self.hass,
+                    tokens_in,
+                    tokens_out,
+                    elapsed_ms,
+                    settings.get("model", "unknown"),
                 )
 
-            # Extract text response
-            text_response = self._api_client.extract_text_response(response)
-
-            # Add Claude's response to history
-            self._conversation_history.append(
-                {
-                    "role": "assistant",
-                    "content": text_response,
-                }
-            )
-
-            # Keep history within limits
-            if len(self._conversation_history) > 20:
-                self._conversation_history = self._conversation_history[-20:]
-
-            # Process tool calls if any
-            tool_calls = self._api_client.extract_tool_calls(response)
-            if tool_calls:
-                _LOGGER.debug("Claude requested tool calls: %s", tool_calls)
-
-            # Return conversation result
-            intent_response = intent.IntentResponse(language=user_input.language)
-            intent_response.async_set_speech(text_response)
-            return ConversationResult(
-                response=intent_response,
-                conversation_id=user_input.conversation_id,
-            )
-
-        except Exception as err:  # pylint: disable=broad-except
+        except Exception as err:
             _LOGGER.error("Error processing conversation: %s", err)
-            intent_response = intent.IntentResponse(language=user_input.language)
-            intent_response.async_set_speech(
-                "I encountered an error processing your request. Please try again."
-            )
-            return ConversationResult(
-                response=intent_response,
-                conversation_id=user_input.conversation_id,
-            )
+            text_response = f"Sorry, an error occurred: {str(err)}"
 
-    def _get_ha_state(self) -> dict[str, Any]:
-        """Get current Home Assistant state.
+        # Build intent response
+        intent_response = intent.IntentResponse(language=user_input.language)
+        intent_response.async_set_speech(text_response)
 
-        Returns:
-            Dictionary of entity states
-        """
-        state_dict = {}
-
-        for entity_id in self.hass.states.async_entity_ids():
-            state = self.hass.states.get(entity_id)
-            if state:
-                state_dict[entity_id] = {
-                    "state": state.state,
-                    "attributes": dict(state.attributes),
-                }
-
-        return state_dict
+        return ConversationResult(
+            response=intent_response,
+            conversation_id=user_input.conversation_id,
+        )
