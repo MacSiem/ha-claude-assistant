@@ -17,6 +17,7 @@ from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.storage import Store
 from homeassistant.components import websocket_api
 from homeassistant.components.frontend import async_register_built_in_panel
+from homeassistant.components.frontend import async_register_built_in_panel
 
 from .action_handler import ActionHandler
 from .api_client import ClaudeAPIClient
@@ -471,8 +472,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 "js_url": "/api/panel_custom/claude-assistant/panel.js",
             }
         },
-        require_admin=False,
-    )
+            require_admin=False,
+        )
+    except ValueError:
+        pass  # Panel already registered
 
     # Listen for options updates
     entry.async_on_unload(entry.add_update_listener(async_options_updated))
