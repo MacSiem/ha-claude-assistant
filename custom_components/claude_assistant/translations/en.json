@@ -1,0 +1,47 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Claude Assistant Setup",
+        "description": "Enter your Anthropic API key. Get one at {learn_more}",
+        "data": {
+          "api_key": "API Key"
+        }
+      },
+      "model": {
+        "title": "Select Claude Model",
+        "description": "Choose which Claude model to use. Available: {models}",
+        "data": {
+          "model": "Model"
+        }
+      },
+      "safety": {
+        "title": "Safety Settings",
+        "description": "Choose the safety confirmation level for actions",
+        "data": {
+          "safety_level": "Safety Level"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid API key. Please check and try again.",
+      "cannot_connect": "Cannot connect to Anthropic API. Check your connection.",
+      "unknown": "An unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "Claude Assistant is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Claude Assistant Settings",
+        "description": "Update Claude Assistant settings",
+        "data": {
+          "model": "Model",
+          "safety_level": "Safety Level"
+        }
+      }
+    }
+  }
+}

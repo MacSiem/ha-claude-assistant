@@ -1,0 +1,24 @@
+send_message:
+  name: Send Message
+  description: Send a message to Claude Assistant for processing
+  fields:
+    message:
+      name: Message
+      description: The message to send to Claude
+      required: true
+      example: "Turn on the living room lights"
+
+execute_action:
+  name: Execute Action
+  description: Execute a pending action that requires confirmation
+  fields:
+    action_id:
+      name: Action ID
+      description: The ID of the pending action to execute
+      required: true
+      example: "550e8400-e29b-41d4-a716-446655440000"
+
+get_history:
+  name: Get Conversation History
+  description: Retrieve the conversation history with Claude
+  fields: {}

@@ -1,0 +1,12 @@
+{
+  "domain": "claude_assistant",
+  "name": "Claude Assistant",
+  "version": "1.0.0",
+  "codeowners": ["@MacSiem"],
+  "config_flow": true,
+  "documentation": "https://github.com/MacSiem/ha-claude-assistant",
+  "iot_class": "cloud_polling",
+  "requirements": ["anthropic>=0.39.0"],
+  "dependencies": ["conversation", "http"],
+  "integration_type": "service"
+}
