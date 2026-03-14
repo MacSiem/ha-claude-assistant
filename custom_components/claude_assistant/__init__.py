@@ -61,7 +61,7 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS = [Platform.CONVERSATION]
 
 
-# ── Helper Functions ─────────────────────────────────────────────────
+# ââ Helper Functions âââââââââââââââââââââââââââââââââââââââââââââââââ
 
 
 async def _add_log_entry(hass: HomeAssistant, log_type: str, message: str, details: dict | None = None) -> None:
@@ -114,7 +114,7 @@ async def _update_stats(hass: HomeAssistant, tokens_in: int, tokens_out: int, re
         await stat_store.async_save(stats)
 
 
-# ── WebSocket Handlers ───────────────────────────────────────────────
+# ââ WebSocket Handlers âââââââââââââââââââââââââââââââââââââââââââââââ
 
 
 @websocket_api.websocket_command({
@@ -310,7 +310,7 @@ async def ws_handle_update_settings(hass: HomeAssistant, connection: websocket_a
     connection.send_result(msg["id"], {"status": "ok", "settings": settings})
 
 
-# ── Setup / Unload ───────────────────────────────────────────────────
+# ââ Setup / Unload âââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -459,19 +459,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )]
     )
 
-    async_register_built_in_panel(hass,
-        component_name="custom",
-        sidebar_title=PANEL_TITLE,
-        sidebar_icon=PANEL_ICON,
-        frontend_url_path="claude-assistant",
-        config={
-            "_panel_custom": {
-                "name": "claude-assistant-panel",
-                "embed_iframe": False,
-                "trust_external": False,
-                "js_url": "/api/panel_custom/claude-assistant/panel.js",
-            }
-        },
+    try:
+        async_register_built_in_panel(hass,
+            component_name="custom",
+            sidebar_title=PANEL_TITLE,
+            sidebar_icon=PANEL_ICON,
+            frontend_url_path="claude-assistant",
+            config={
+                "_panel_custom": {
+                    "name": "claude-assistant-panel",
+                    "embed_iframe": False,
+                    "trust_external": False,
+                    "js_url": "/api/panel_custom/claude-assistant/panel.js",
+                }
+            },
             require_admin=False,
         )
     except ValueError:
