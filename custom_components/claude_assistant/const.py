@@ -95,6 +95,13 @@ PANEL_TITLE = "Claude Assistant"
 PANEL_ICON = "mdi:robot"
 PANEL_URL = "/api/panel_custom/claude-assistant"
 
+# Action categories (for action_handler.py)
+ACTION_CATEGORY_SAFE = "safe"
+ACTION_CATEGORY_MODERATE = "moderate"
+ACTION_CATEGORY_DANGEROUS = "dangerous"
+ACTION_CATEGORY_CRITICAL = "critical"
+ACTION_CONFIRMATION_TIMEOUT = 30
+
 # Limits
 MAX_LOG_ENTRIES = 500
 MAX_CONVERSATION_HISTORY = 20
