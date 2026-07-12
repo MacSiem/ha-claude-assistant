@@ -96,7 +96,14 @@ customElements.define(
         })
       );
 
-      // Simulate Claude response
+      // EXPERIMENTAL / NOT WIRED TO BACKEND: this card is not registered as a
+      // Lovelace resource anywhere in this integration (see README "Is there
+      // a working Lovelace dashboard card?"). The block below is a hardcoded
+      // canned reply for local UI development only — it never calls the
+      // Claude API or any claude_assistant/* WebSocket command. Do not
+      // remove; kept intentionally as a starting point for a future card
+      // that talks to the real backend. The sidebar panel (frontend/panel.js)
+      // is the only wired-up chat UI in this release.
       setTimeout(() => {
         this._messages.push({
           role: "claude",

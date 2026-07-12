@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.1.2 (2026-07-12)
+
+- Fixed sidebar-panel WebSocket contract bugs where the backend response
+  shape didn't match what `frontend/panel.js` reads, breaking Logs pagination,
+  Settings, Stats, and per-message chat metadata:
+  - `claude_assistant/get_logs` now accepts the `limit`/`offset` the panel
+    sends (previously rejected by the schema) and returns
+    `{"logs": [...], "total": N}` instead of a bare list.
+  - `claude_assistant/settings` now returns `{"settings": {...}}` instead of
+    an unwrapped dict.
+  - `claude_assistant/get_stats` now returns `{"stats": {...}}` and includes
+    `total_conversations` / `total_tokens_in` / `total_tokens_out` alongside
+    the existing `conversations_total` / `tokens_total_in` / `tokens_total_out`
+    keys for backward compat.
+  - `claude_assistant/chat` responses now include `tokens_in` / `tokens_out` /
+    `response_time_ms` alongside the existing `input_tokens` / `output_tokens`
+    / `time_ms` keys, so per-message token/timing metadata renders in the
+    Chat tab.
+- Fixed a `TypeError`/zombie-card bug in `frontend/confirmation-card.js`:
+  the approve/reject buttons and the countdown-expiry handler read
+  `this._data.id` unguarded, which threw if the card rendered (or its
+  countdown expired) before `data` was ever set. Approve/Reject buttons are
+  now disabled until `data` is set, and all three code paths guard against
+  a missing `_data`.
+- Added a comment in `frontend/card.js` marking the hardcoded `setTimeout`
+  chat reply as experimental/not wired to the backend (kept intentionally;
+  matches the README's existing "Is there a working Lovelace dashboard
+  card?" answer — the card is not registered as a Lovelace resource
+  anywhere in this integration).
+
 ## 1.1.1 (2026-07-12)
 
 - Panel UI translated to English (tabs, chat, logs, stats, settings — previously

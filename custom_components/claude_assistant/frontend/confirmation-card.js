@@ -59,6 +59,11 @@ customElements.define(
 
         if (this._remainingSeconds <= 0) {
           clearInterval(this._timeout);
+          if (!this._data) {
+            // No action data ever arrived — nothing to time out, just drop the card.
+            this.remove();
+            return;
+          }
           this.dispatchEvent(
             new CustomEvent("confirmation-timeout", { detail: { id: this._data.id } })
           );
@@ -68,6 +73,7 @@ customElements.define(
     }
 
     onApprove() {
+      if (!this._data) return; // Guard: buttons are disabled until _data is set.
       clearInterval(this._timeout);
       this.dispatchEvent(
         new CustomEvent("confirmation-approved", {
@@ -79,6 +85,7 @@ customElements.define(
     }
 
     onReject() {
+      if (!this._data) return; // Guard: buttons are disabled until _data is set.
       clearInterval(this._timeout);
       this.dispatchEvent(
         new CustomEvent("confirmation-rejected", {
@@ -90,6 +97,7 @@ customElements.define(
     }
 
     render() {
+      const hasData = !!this._data;
       const { action, description, details, risk_level } = this._data || {
         action: "Unknown",
         description: "Unknown action",
@@ -296,10 +304,10 @@ customElements.define(
           }
 
           <div class="controls">
-            <button class="approve-btn" aria-label="Approve action">
+            <button class="approve-btn" aria-label="Approve action" ${hasData ? "" : "disabled"}>
               ✓ Approve
             </button>
-            <button class="reject-btn" aria-label="Reject action">
+            <button class="reject-btn" aria-label="Reject action" ${hasData ? "" : "disabled"}>
               ✗ Reject
             </button>
             <span class="timer">5:00</span>

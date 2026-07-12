@@ -174,6 +174,11 @@ async def ws_handle_chat(hass: HomeAssistant, connection: websocket_api.ActiveCo
             "text": response.get("text", ""),
             "input_tokens": response.get("input_tokens", 0),
             "output_tokens": response.get("output_tokens", 0),
+            # Panel (frontend/panel.js _sendMessage) reads tokens_in/tokens_out/
+            # response_time_ms; keep both naming sets for backward compat.
+            "tokens_in": response.get("input_tokens", 0),
+            "tokens_out": response.get("output_tokens", 0),
+            "response_time_ms": elapsed_ms,
             "model": response.get("model", ""),
             "time_ms": elapsed_ms,
         })
@@ -251,17 +256,26 @@ async def ws_handle_confirm_action(hass: HomeAssistant, connection: websocket_ap
 async def ws_handle_settings(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
     """Return current settings."""
     data = hass.data.get(DOMAIN, {})
-    connection.send_result(msg["id"], data.get("settings", {}))
+    # Panel (frontend/panel.js _loadSettings) reads result.settings.
+    connection.send_result(msg["id"], {"settings": data.get("settings", {})})
 
 
 @websocket_api.websocket_command({
     vol.Required("type"): WS_TYPE_GET_LOGS,
+    vol.Optional("limit", default=50): int,
+    vol.Optional("offset", default=0): int,
 })
 @websocket_api.async_response
 async def ws_handle_get_logs(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
-    """Return logs."""
+    """Return a page of logs (newest-first) plus the total count."""
     data = hass.data.get(DOMAIN, {})
-    connection.send_result(msg["id"], data.get("logs", []))
+    logs = data.get("logs", [])
+    limit = msg["limit"]
+    offset = msg["offset"]
+    # Logs are already stored newest-first (see _add_log_entry's insert(0, ...)),
+    # matching the panel's rendering order (frontend/panel.js _updateLogs).
+    page = logs[offset:offset + limit]
+    connection.send_result(msg["id"], {"logs": page, "total": len(logs)})
 
 
 @websocket_api.websocket_command({
@@ -285,7 +299,15 @@ async def ws_handle_clear_logs(hass: HomeAssistant, connection: websocket_api.Ac
 async def ws_handle_get_stats(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
     """Return stats."""
     data = hass.data.get(DOMAIN, {})
-    connection.send_result(msg["id"], data.get("stats", {}))
+    stats = dict(data.get("stats", {}))
+    # Panel (frontend/panel.js _updateStats) reads total_conversations/
+    # total_tokens_in/total_tokens_out; the stored stats dict uses
+    # conversations_total/tokens_total_in/tokens_total_out. Emit both sets
+    # for backward compat.
+    stats["total_conversations"] = stats.get("conversations_total", 0)
+    stats["total_tokens_in"] = stats.get("tokens_total_in", 0)
+    stats["total_tokens_out"] = stats.get("tokens_total_out", 0)
+    connection.send_result(msg["id"], {"stats": stats})
 
 
 @websocket_api.websocket_command({
