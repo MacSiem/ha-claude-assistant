@@ -1,5 +1,7 @@
 # Claude Assistant
 
+![Preview](banner.png)
+
 Chat with Anthropic's Claude inside Home Assistant — as a sidebar panel and as
 a selectable Assist conversation agent — with your live entity states fed in
 as context automatically.
