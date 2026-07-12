@@ -11,7 +11,7 @@ import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant, ServiceCall, callback
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.storage import Store
@@ -118,6 +118,69 @@ async def _update_stats(hass: HomeAssistant, tokens_in: int, tokens_out: int, re
 # Ã¢ÂÂÃ¢ÂÂ WebSocket Handlers Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 
 
+async def _process_chat(hass: HomeAssistant, message: str) -> dict:
+    """Run one chat turn: entity context, API call, history, log and stats.
+
+    Shared by the WebSocket handler (sidebar panel) and the
+    ``claude_assistant.chat`` service so both paths are first-class citizens:
+    every chat lands in the panel's log/stats regardless of where it came from.
+    """
+    data = hass.data.get(DOMAIN, {})
+    start_time = time.time()
+
+    entity_context = []
+    for state in hass.states.async_all():
+        domain = state.entity_id.split(".")[0]
+        if domain in ("light", "switch", "climate", "cover", "lock", "sensor", "binary_sensor", "media_player"):
+            entity_context.append(f"- {state.entity_id}: {state.state}")
+
+    system = data["settings"]["system_prompt"]
+    if entity_context:
+        system += "\n\nAvailable entities:\n" + "\n".join(entity_context[:50])
+
+    response = await data["api_client"].send_message(
+        message=message,
+        conversation_history=data["conversation_history"],
+        system_prompt=system,
+        temperature=data["settings"]["temperature"],
+        max_tokens=data["settings"]["max_tokens"],
+    )
+
+    elapsed_ms = int((time.time() - start_time) * 1000)
+
+    data["conversation_history"].append({"role": "user", "content": message})
+    data["conversation_history"].append({"role": "assistant", "content": response.get("text", "")})
+    if len(data["conversation_history"]) > 40:
+        data["conversation_history"] = data["conversation_history"][-40:]
+
+    await _add_log_entry(hass, "chat", message[:100], {
+        "response": response.get("text", "")[:200],
+        "tokens_in": response.get("input_tokens", 0),
+        "tokens_out": response.get("output_tokens", 0),
+        "time_ms": elapsed_ms,
+    })
+    await _update_stats(
+        hass,
+        response.get("input_tokens", 0),
+        response.get("output_tokens", 0),
+        elapsed_ms,
+        response.get("model", data["settings"]["model"]),
+    )
+
+    return {
+        "text": response.get("text", ""),
+        "input_tokens": response.get("input_tokens", 0),
+        "output_tokens": response.get("output_tokens", 0),
+        # Panel (frontend/panel.js _sendMessage) reads tokens_in/tokens_out/
+        # response_time_ms; keep both naming sets for backward compat.
+        "tokens_in": response.get("input_tokens", 0),
+        "tokens_out": response.get("output_tokens", 0),
+        "response_time_ms": elapsed_ms,
+        "model": response.get("model", ""),
+        "time_ms": elapsed_ms,
+    }
+
+
 @websocket_api.websocket_command({
     vol.Required("type"): WS_TYPE_CHAT,
     vol.Required("message"): str,
@@ -126,62 +189,9 @@ async def _update_stats(hass: HomeAssistant, tokens_in: int, tokens_out: int, re
 @websocket_api.async_response
 async def ws_handle_chat(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
     """Handle WebSocket chat."""
-    data = hass.data.get(DOMAIN, {})
-    message = msg["message"]
-    start_time = time.time()
-
     try:
-        entity_context = []
-        for state in hass.states.async_all():
-            domain = state.entity_id.split(".")[0]
-            if domain in ("light", "switch", "climate", "cover", "lock", "sensor", "binary_sensor", "media_player"):
-                entity_context.append(f"- {state.entity_id}: {state.state}")
-
-        system = data["settings"]["system_prompt"]
-        if entity_context:
-            system += "\n\nAvailable entities:\n" + "\n".join(entity_context[:50])
-
-        response = await data["api_client"].send_message(
-            message=message,
-            conversation_history=data["conversation_history"],
-            system_prompt=system,
-            temperature=data["settings"]["temperature"],
-            max_tokens=data["settings"]["max_tokens"],
-        )
-
-        elapsed_ms = int((time.time() - start_time) * 1000)
-
-        data["conversation_history"].append({"role": "user", "content": message})
-        data["conversation_history"].append({"role": "assistant", "content": response.get("text", "")})
-        if len(data["conversation_history"]) > 40:
-            data["conversation_history"] = data["conversation_history"][-40:]
-
-        await _add_log_entry(hass, "chat", message[:100], {
-            "response": response.get("text", "")[:200],
-            "tokens_in": response.get("input_tokens", 0),
-            "tokens_out": response.get("output_tokens", 0),
-            "time_ms": elapsed_ms,
-        })
-        await _update_stats(
-            hass,
-            response.get("input_tokens", 0),
-            response.get("output_tokens", 0),
-            elapsed_ms,
-            response.get("model", data["settings"]["model"]),
-        )
-
-        connection.send_result(msg["id"], {
-            "text": response.get("text", ""),
-            "input_tokens": response.get("input_tokens", 0),
-            "output_tokens": response.get("output_tokens", 0),
-            # Panel (frontend/panel.js _sendMessage) reads tokens_in/tokens_out/
-            # response_time_ms; keep both naming sets for backward compat.
-            "tokens_in": response.get("input_tokens", 0),
-            "tokens_out": response.get("output_tokens", 0),
-            "response_time_ms": elapsed_ms,
-            "model": response.get("model", ""),
-            "time_ms": elapsed_ms,
-        })
+        result = await _process_chat(hass, msg["message"])
+        connection.send_result(msg["id"], result)
     except Exception as err:
         _LOGGER.error("WS chat error: %s", err)
         await _add_log_entry(hass, "error", f"Chat error: {err}")
@@ -436,21 +446,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     # Services
-    async def handle_chat(call: ServiceCall) -> None:
-        """Handle chat service call."""
+    async def handle_chat(call: ServiceCall) -> dict | None:
+        """Handle chat service call.
+
+        Uses the same pipeline as the sidebar panel (entity context, history,
+        log store, stats) and supports ``response_variable`` so automations
+        can act on Claude's reply.
+        """
         message = call.data.get("message", "")
-        data = hass.data[DOMAIN]
         try:
-            response = await data["api_client"].send_message(
-                message=message,
-                conversation_history=data["conversation_history"],
-                system_prompt=data["settings"]["system_prompt"],
-                temperature=data["settings"]["temperature"],
-                max_tokens=data["settings"]["max_tokens"],
-            )
-            _LOGGER.info("Claude response: %s", response.get("text", "")[:100])
+            result = await _process_chat(hass, message)
+            _LOGGER.info("Claude response: %s", result.get("text", "")[:100])
         except Exception as err:
             _LOGGER.error("Error in Claude chat: %s", err)
+            await _add_log_entry(hass, "error", f"Chat error: {err}")
+            if call.return_response:
+                raise HomeAssistantError(f"Claude chat failed: {err}") from err
+            return None
+        if call.return_response:
+            return {
+                "response": result.get("text", ""),
+                "tokens_in": result.get("tokens_in", 0),
+                "tokens_out": result.get("tokens_out", 0),
+                "response_time_ms": result.get("response_time_ms", 0),
+                "model": result.get("model", ""),
+            }
+        return None
 
     async def handle_clear_history(call: ServiceCall) -> None:
         """Clear conversation history."""
@@ -458,7 +479,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         data["conversation_history"] = []
         _LOGGER.info("Conversation history cleared")
 
-    hass.services.async_register(DOMAIN, "chat", handle_chat)
+    hass.services.async_register(
+        DOMAIN, "chat", handle_chat, supports_response=SupportsResponse.OPTIONAL
+    )
     hass.services.async_register(DOMAIN, "clear_history", handle_clear_history)
 
     # Register WebSocket handlers

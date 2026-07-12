@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.3 (2026-07-12)
+
+- The `claude_assistant.chat` service now uses the same pipeline as the
+  sidebar panel: entity-state context is included, the exchange is written to
+  the panel's log store and stats, and with `response_variable` the reply
+  (`response`, `tokens_in`, `tokens_out`, `response_time_ms`, `model`) is
+  returned to the calling automation or script (`SupportsResponse.OPTIONAL`).
+  Previously the service bypassed logging/stats entirely and discarded the
+  reply (found by a real-use-case test on production).
+
 ## 1.1.2 (2026-07-12)
 
 - Fixed sidebar-panel WebSocket contract bugs where the backend response

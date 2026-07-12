@@ -1,6 +1,6 @@
 chat:
   name: Chat
-  description: Send a message to Claude and log the response (response is written to the log; use the panel or conversation agent for interactive replies).
+  description: Send a message to Claude. The exchange lands in the panel's log and stats; with `response_variable` the reply is returned to the calling automation/script.
   fields:
     message:
       name: Message
