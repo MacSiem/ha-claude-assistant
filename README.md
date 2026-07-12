@@ -183,8 +183,8 @@ support this use — this path is unlikely to work. Use a real API key from
 `console.anthropic.com/settings/keys` instead.
 
 **Which Claude models can I pick, and what do they cost?**
-`claude-opus-4-20250514` (default), `claude-sonnet-4-20250514`, and
-`claude-haiku-3-5-20241022`, changeable any time from the integration's
+`claude-sonnet-5` (default), `claude-opus-4-8`, and
+`claude-haiku-4-5-20251001`, changeable any time from the integration's
 Options or the sidebar panel's Settings tab. This integration does not
 estimate or cap spend — every chat, Assist turn, or `claude_assistant.chat`
 call is a normal Claude API request billed to your Anthropic account at

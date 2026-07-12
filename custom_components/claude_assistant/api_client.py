@@ -11,6 +11,7 @@ from .const import (
     AUTH_TYPE_PERSONAL,
     CLAUDE_MODELS,
     DEFAULT_MAX_TOKENS,
+    DEFAULT_MODEL,
     DEFAULT_SYSTEM_PROMPT,
     DEFAULT_TEMPERATURE,
 )
@@ -24,7 +25,7 @@ class ClaudeAPIClient:
     def __init__(
         self,
         api_key: str,
-        model: str = "claude-opus-4-20250514",
+        model: str = DEFAULT_MODEL,
         auth_type: str = AUTH_TYPE_API_KEY,
     ) -> None:
         """Initialize the Claude API client.
@@ -36,6 +37,7 @@ class ClaudeAPIClient:
         self._auth_type = auth_type
         self.client: Optional[AsyncAnthropic] = None
         self.model = model if model in CLAUDE_MODELS else CLAUDE_MODELS[0]
+        self._temperature_unsupported = False
         self._message_count = 0
 
     async def async_init(self, hass) -> None:
@@ -105,13 +107,52 @@ class ClaudeAPIClient:
         messages.append({"role": "user", "content": message})
 
         try:
-            response = await client.messages.create(
-                model=self.model,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                system=system_prompt,
-                messages=messages,
-            )
+            kwargs = {
+                "model": self.model,
+                "max_tokens": max_tokens,
+                "system": system_prompt,
+                "messages": messages,
+            }
+            if not self._temperature_unsupported:
+                kwargs["temperature"] = temperature
+
+            # Self-heal loop: Anthropic retires model ids (404 not_found) and
+            # newer models reject the temperature parameter (400 deprecated) —
+            # both observed live. Adapt once and remember instead of failing
+            # every chat until the user visits Settings.
+            for _ in range(3):
+                try:
+                    response = await client.messages.create(**kwargs)
+                    break
+                except APIError as err:
+                    msg = str(err).lower()
+                    status = getattr(err, "status_code", None)
+                    if (
+                        status == 404
+                        and "model" in msg
+                        and kwargs["model"] != CLAUDE_MODELS[0]
+                    ):
+                        _LOGGER.warning(
+                            "Model %s no longer exists — retrying with %s",
+                            kwargs["model"],
+                            CLAUDE_MODELS[0],
+                        )
+                        self.model = kwargs["model"] = CLAUDE_MODELS[0]
+                        continue
+                    if (
+                        status == 400
+                        and "temperature" in msg
+                        and "temperature" in kwargs
+                    ):
+                        _LOGGER.warning(
+                            "Model %s rejects the temperature parameter — "
+                            "retrying without it",
+                            kwargs["model"],
+                        )
+                        self._temperature_unsupported = True
+                        kwargs.pop("temperature")
+                        continue
+                    raise
 
             self._message_count += 1
 

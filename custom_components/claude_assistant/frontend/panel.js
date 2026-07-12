@@ -798,7 +798,7 @@ class ClaudeAssistantPanel extends HTMLElement {
     if (!container) return;
 
     const s = this._settings;
-    const models = ["claude-opus-4-20250514", "claude-sonnet-4-20250514", "claude-haiku-3-5-20241022"];
+    const models = ["claude-sonnet-5", "claude-opus-4-8", "claude-haiku-4-5-20251001"];
     const safetyLevels = {
       all_actions: "Confirm all actions",
       dangerous_only: "Dangerous only",

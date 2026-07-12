@@ -56,12 +56,12 @@ DANGEROUS_SERVICES = [
 
 # Claude models
 CLAUDE_MODELS = [
-    "claude-opus-4-20250514",
-    "claude-sonnet-4-20250514",
-    "claude-haiku-3-5-20241022",
+    "claude-sonnet-5",
+    "claude-opus-4-8",
+    "claude-haiku-4-5-20251001",
 ]
 
-DEFAULT_MODEL = "claude-opus-4-20250514"
+DEFAULT_MODEL = "claude-sonnet-5"
 DEFAULT_TEMPERATURE = 0.7
 DEFAULT_MAX_TOKENS = 2048
 

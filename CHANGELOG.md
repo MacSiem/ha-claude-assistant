@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.4 (2026-07-12)
+
+- **Fix: chat was completely broken — the bundled model ids were retired by
+  the Anthropic API** (`claude-*-4-20250514` now return 404 not_found; found
+  by a real-use-case test on production). Model list updated to current ids
+  (`claude-sonnet-5` default, `claude-opus-4-8`, `claude-haiku-4-5-20251001`).
+- Self-heal: when a saved model id goes stale (API returns 404 for the model)
+  or the model rejects the `temperature` parameter (400 deprecated — current
+  models), the client adapts once and remembers, instead of failing every chat
+  until the user visits Settings.
+
 ## 1.1.3 (2026-07-12)
 
 - The `claude_assistant.chat` service now uses the same pipeline as the
