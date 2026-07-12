@@ -518,9 +518,9 @@ class ClaudeAssistantPanel extends HTMLElement {
 
         <div class="tabs">
           <div class="tab active" data-tab="chat">💬 Chat</div>
-          <div class="tab" data-tab="logs">📋 Logi</div>
-          <div class="tab" data-tab="stats">📊 Statystyki</div>
-          <div class="tab" data-tab="settings">⚙️ Ustawienia</div>
+          <div class="tab" data-tab="logs">📋 Logs</div>
+          <div class="tab" data-tab="stats">📊 Stats</div>
+          <div class="tab" data-tab="settings">⚙️ Settings</div>
         </div>
 
         <!-- Chat Tab -->
@@ -528,22 +528,22 @@ class ClaudeAssistantPanel extends HTMLElement {
           <div class="chat-messages" id="chat-messages">
             <div class="empty-state">
               <div class="icon">🤖</div>
-              <div>Napisz wiadomość, aby rozpocząć rozmowę z Claude</div>
+              <div>Type a message to start chatting with Claude</div>
             </div>
           </div>
           <div class="chat-input-area">
-            <input type="text" id="chat-input" placeholder="Napisz wiadomość..." autocomplete="off" />
-            <button id="chat-send">Wyślij</button>
+            <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off" />
+            <button id="chat-send">Send</button>
           </div>
         </div>
 
         <!-- Logs Tab -->
         <div class="tab-content" id="tab-logs">
           <div class="logs-toolbar">
-            <span id="logs-count">0 wpisów</span>
+            <span id="logs-count">0 entries</span>
             <div style="display:flex;gap:8px;">
-              <button class="btn-sm" id="logs-refresh">Odśwież</button>
-              <button class="btn-sm btn-danger" id="logs-clear">Wyczyść</button>
+              <button class="btn-sm" id="logs-refresh">Refresh</button>
+              <button class="btn-sm btn-danger" id="logs-clear">Clear</button>
             </div>
           </div>
           <div class="logs-container" id="logs-list"></div>
@@ -602,7 +602,7 @@ class ClaudeAssistantPanel extends HTMLElement {
     // Logs
     shadow.getElementById("logs-refresh").addEventListener("click", () => this._loadLogs(true));
     shadow.getElementById("logs-clear").addEventListener("click", () => {
-      if (confirm("Czy na pewno chcesz wyczyścić wszystkie logi?")) {
+      if (confirm("Are you sure you want to clear all logs?")) {
         this._clearLogs();
       }
     });
@@ -617,7 +617,7 @@ class ClaudeAssistantPanel extends HTMLElement {
     if (this._chatMessages.length === 0) {
       html = `<div class="empty-state">
         <div class="icon">🤖</div>
-        <div>Napisz wiadomość, aby rozpocząć rozmowę z Claude</div>
+        <div>Type a message to start chatting with Claude</div>
       </div>`;
     } else {
       for (const msg of this._chatMessages) {
@@ -650,10 +650,10 @@ class ClaudeAssistantPanel extends HTMLElement {
     const counter = this.shadowRoot.getElementById("logs-count");
     if (!container) return;
 
-    counter.textContent = this._logsTotal + " wpisów";
+    counter.textContent = this._logsTotal + " entries";
 
     if (this._logs.length === 0) {
-      container.innerHTML = `<div class="empty-state" style="padding:40px"><div>Brak logów</div></div>`;
+      container.innerHTML = `<div class="empty-state" style="padding:40px"><div>No logs</div></div>`;
       return;
     }
 
@@ -748,46 +748,46 @@ class ClaudeAssistantPanel extends HTMLElement {
     container.innerHTML = `
       <div class="stats-grid">
         <div class="stat-card">
-          <div class="stat-label">Rozmowy dzisiaj</div>
+          <div class="stat-label">Conversations today</div>
           <div class="stat-value">${s.conversations_today || 0}</div>
-          <div class="stat-sub">Łącznie: ${s.total_conversations || 0}</div>
+          <div class="stat-sub">Total: ${s.total_conversations || 0}</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Tokeny dzisiaj</div>
+          <div class="stat-label">Tokens today</div>
           <div class="stat-value">${this._formatNumber(todayTokens)}</div>
           <div class="stat-sub">↗ ${s.tokens_today_in || 0} / ↙ ${s.tokens_today_out || 0}</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Łączne tokeny</div>
+          <div class="stat-label">Total tokens</div>
           <div class="stat-value">${this._formatNumber(totalTokens)}</div>
           <div class="stat-sub">↗ ${this._formatNumber(s.total_tokens_in || 0)} / ↙ ${this._formatNumber(s.total_tokens_out || 0)}</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Śr. czas odpowiedzi</div>
+          <div class="stat-label">Avg response time</div>
           <div class="stat-value">${this._formatNumber(avgTime)}<span style="font-size:14px">ms</span></div>
-          <div class="stat-sub">Na podstawie ${s.total_conversations || 0} rozmów</div>
+          <div class="stat-sub">Based on ${s.total_conversations || 0} conversations</div>
         </div>
       </div>
 
       <div class="chart-card">
-        <h3>Aktywność godzinowa (dzisiaj)</h3>
+        <h3>Hourly activity (today)</h3>
         <div class="chart-bar-container" style="margin-bottom:24px;">
-          ${hourlyBars || '<div style="color:var(--text-secondary);font-size:13px;">Brak danych</div>'}
+          ${hourlyBars || '<div style="color:var(--text-secondary);font-size:13px;">No data</div>'}
         </div>
       </div>
 
       ${daily.length > 0 ? `
       <div class="chart-card">
-        <h3>Historia dzienna (ostatnie 14 dni)</h3>
+        <h3>Daily history (last 14 days)</h3>
         <div class="chart-bar-container" style="margin-bottom:24px;">
           ${dailyBars}
         </div>
       </div>` : ""}
 
       <div class="chart-card">
-        <h3>Użycie modeli</h3>
+        <h3>Model usage</h3>
         <div class="model-usage-list">
-          ${modelHtml || '<div style="color:var(--text-secondary);font-size:13px;">Brak danych</div>'}
+          ${modelHtml || '<div style="color:var(--text-secondary);font-size:13px;">No data</div>'}
         </div>
       </div>
     `;
@@ -800,9 +800,9 @@ class ClaudeAssistantPanel extends HTMLElement {
     const s = this._settings;
     const models = ["claude-opus-4-20250514", "claude-sonnet-4-20250514", "claude-haiku-3-5-20241022"];
     const safetyLevels = {
-      all_actions: "Potwierdzaj wszystkie",
-      dangerous_only: "Tylko niebezpieczne",
-      none: "Bez potwierdzeń",
+      all_actions: "Confirm all actions",
+      dangerous_only: "Dangerous only",
+      none: "No confirmations",
     };
 
     const modelOptions = models.map((m) => {
@@ -820,10 +820,10 @@ class ClaudeAssistantPanel extends HTMLElement {
 
     container.innerHTML = `
       <div class="settings-section">
-        <h3>Autoryzacja</h3>
+        <h3>Authentication</h3>
         <div class="setting-row">
           <div>
-            <div class="setting-label">Metoda logowania</div>
+            <div class="setting-label">Login method</div>
             <div class="setting-desc">Zmiana wymaga rekonfiguracji integracji</div>
           </div>
           <span class="auth-badge ${authClass}">${authLabel}</span>
@@ -835,18 +835,18 @@ class ClaudeAssistantPanel extends HTMLElement {
         <div class="setting-row">
           <div>
             <div class="setting-label">Model Claude</div>
-            <div class="setting-desc">Wpływa na jakość i szybkość odpowiedzi</div>
+            <div class="setting-desc">Affects response quality and speed</div>
           </div>
           <select id="set-model">${modelOptions}</select>
         </div>
       </div>
 
       <div class="settings-section">
-        <h3>Parametry generowania</h3>
+        <h3>Generation parameters</h3>
         <div class="setting-row">
           <div>
-            <div class="setting-label">Temperatura</div>
-            <div class="setting-desc">Niższa = bardziej precyzyjne, wyższa = bardziej kreatywne</div>
+            <div class="setting-label">Temperature</div>
+            <div class="setting-desc">Lower = more precise, higher = more creative</div>
           </div>
           <div style="display:flex;align-items:center;gap:8px;">
             <input type="range" id="set-temperature" min="0" max="1" step="0.05" value="${s.temperature || 0.7}" style="min-width:120px" />
@@ -855,30 +855,30 @@ class ClaudeAssistantPanel extends HTMLElement {
         </div>
         <div class="setting-row">
           <div>
-            <div class="setting-label">Maksymalna liczba tokenów</div>
-            <div class="setting-desc">Limit długości odpowiedzi (256 - 8192)</div>
+            <div class="setting-label">Max tokens</div>
+            <div class="setting-desc">Response length limit (256 - 8192)</div>
           </div>
           <input type="number" id="set-max-tokens" min="256" max="8192" step="256" value="${s.max_tokens || 2048}" />
         </div>
       </div>
 
       <div class="settings-section">
-        <h3>Bezpieczeństwo</h3>
+        <h3>Safety</h3>
         <div class="setting-row">
           <div>
-            <div class="setting-label">Poziom potwierdzeń</div>
-            <div class="setting-desc">Kiedy pytać o potwierdzenie akcji smart home</div>
+            <div class="setting-label">Confirmation level</div>
+            <div class="setting-desc">When to ask for confirmation of smart home actions</div>
           </div>
           <select id="set-safety">${safetyOptions}</select>
         </div>
       </div>
 
       <div class="settings-section">
-        <h3>Prompt systemowy</h3>
+        <h3>System prompt</h3>
         <div class="setting-row setting-full">
           <div>
-            <div class="setting-label">Instrukcje dla Claude</div>
-            <div class="setting-desc">Określ zachowanie i rolę asystenta</div>
+            <div class="setting-label">Instructions for Claude</div>
+            <div class="setting-desc">Define the assistant's behavior and role</div>
           </div>
           <textarea id="set-prompt">${this._escapeHtml(s.system_prompt || "")}</textarea>
         </div>

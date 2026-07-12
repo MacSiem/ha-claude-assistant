@@ -204,8 +204,7 @@ and shown in the panel, but has no effect yet.
 
 ## Changelog
 
-Current release: **v1.1.0** (see `manifest.json`). This repository does not
-yet track a standalone `CHANGELOG.md` — check the
+See [CHANGELOG.md](CHANGELOG.md) and the
 [GitHub Releases](https://github.com/MacSiem/ha-claude-assistant/releases)
 page for release notes.
 
