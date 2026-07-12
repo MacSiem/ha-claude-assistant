@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Claude Assistant screenshot harness</title>
+<style>
+  html, body { margin: 0; padding: 24px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body.light { background: #f4f5f7; }
+  body.dark { background: #111318; }
+  .frame {
+    width: 480px;
+    height: 700px;
+    overflow: hidden;
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+  }
+  claude-assistant-panel { display: block; width: 480px; height: 700px; }
+</style>
+</head>
+<body>
+<div class="frame">
+  <claude-assistant-panel id="panel"></claude-assistant-panel>
+</div>
+<script>
+  try { localStorage.setItem('ha-intro-dismissed-claude-assistant', '1'); } catch (e) {}
+</script>
+<script src="../../custom_components/claude_assistant/frontend/panel.js"></script>
+<script>
+(function () {
+  const params = new URLSearchParams(location.search);
+  const theme = params.get('theme') === 'dark' ? 'dark' : 'light';
+  document.body.className = theme;
+
+  const panel = document.getElementById('panel');
+
+  // The panel's own <style> hardcodes --bg/--card-bg/etc. on :host and only
+  // flips them via a `@media (prefers-color-scheme: dark)` block inside its
+  // own shadow root (it does not read hass.themes). An inline style on the
+  // host element wins over that internal :host rule for the same element,
+  // so we force the same palette the component would use in OS dark mode.
+  if (theme === 'dark') {
+    panel.style.setProperty('--bg', '#1a1a2e');
+    panel.style.setProperty('--card-bg', '#16213e');
+    panel.style.setProperty('--text', '#e2e8f0');
+    panel.style.setProperty('--text-secondary', '#94a3b8');
+    panel.style.setProperty('--border', '#334155');
+    panel.style.setProperty('--chat-assistant', '#1e293b');
+  }
+
+  const now = Date.now();
+
+  const settings = {
+    model: 'claude-sonnet-4-20250514',
+    temperature: 0.7,
+    max_tokens: 2048,
+    safety_level: 'dangerous_only',
+    system_prompt: 'You are Claude, an AI assistant integrated with Home Assistant.',
+    auth_type: 'api_key',
+  };
+
+  const stats = {
+    conversations_today: 4,
+    total_conversations: 128,
+    tokens_today_in: 2100,
+    tokens_today_out: 640,
+    total_tokens_in: 58200,
+    total_tokens_out: 15400,
+    avg_response_time_ms: 640,
+    hourly_usage: { '07': 1, '08': 2, '12': 1, '19': 1 },
+    daily_history: [],
+    model_usage: { 'claude-sonnet-4-20250514': 9, 'claude-opus-4-20250514': 2 },
+  };
+
+  // Mock hass — panel.js only ever calls hass.connection.sendMessagePromise().
+  const hass = {
+    connection: {
+      sendMessagePromise: (msg) => {
+        const t = String(msg && msg.type || '');
+        if (t === 'claude_assistant/settings') {
+          return Promise.resolve({ settings });
+        }
+        if (t === 'claude_assistant/get_stats') {
+          return Promise.resolve({ stats });
+        }
+        if (t === 'claude_assistant/get_logs') {
+          return Promise.resolve({ logs: [], total: 0 });
+        }
+        if (t === 'claude_assistant/chat') {
+          return Promise.resolve({
+            text: 'You have 2 lights on: Living Room Lamp and Kitchen Ceiling. Everything else is off.',
+            tokens_in: 812,
+            tokens_out: 54,
+            response_time_ms: 640,
+            model: 'claude-sonnet-4-20250514',
+          });
+        }
+        if (t === 'claude_assistant/update_settings') {
+          return Promise.resolve({ settings });
+        }
+        return Promise.resolve({});
+      },
+    },
+  };
+
+  panel.hass = hass;
+
+  // Drive a short, realistic EN chat exchange through the panel's own
+  // (underscore-prefixed but not truly private) _sendMessage method, which
+  // pushes the user bubble, awaits the mocked WS reply above, and pushes the
+  // assistant bubble.
+  setTimeout(() => {
+    if (typeof panel._sendMessage === 'function') {
+      panel._sendMessage('Which lights are on?');
+    }
+  }, 150);
+
+  // Defensive cleanup mirroring the family harness pattern: neutralize any
+  // ha-card wrapper styling and scrub donation/tip banners, in case a future
+  // panel revision introduces them. This panel currently uses neither.
+  const scrub = () => {
+    try {
+      const root = panel.shadowRoot;
+      if (!root) return;
+      if (!root.querySelector('#harness-ha-card-neutralize')) {
+        const style = document.createElement('style');
+        style.id = 'harness-ha-card-neutralize';
+        style.textContent = 'ha-card { background: transparent !important; box-shadow: none !important; border: none !important; }';
+        root.appendChild(style);
+      }
+      root.querySelectorAll('#tip-banner, [class*="banner"], .donate-section').forEach((n) => n.remove());
+      root.querySelectorAll('*').forEach((n) => {
+        if (n.children.length === 0 && /Support HA Tools Development/i.test(n.textContent || '')) {
+          n.remove();
+        }
+      });
+    } catch (e) {}
+  };
+  setInterval(scrub, 150);
+
+  setTimeout(() => {
+    scrub();
+    document.title = 'READY';
+  }, 1500);
+})();
+</script>
+</body>
+</html>
