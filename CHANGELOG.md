@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.5 (2026-07-18)
+
+- Fix: settings changed in the panel Settings tab are now persisted to the config entry. Previously they only updated an in-memory copy and silently reverted to the stored options on the next Home Assistant restart.
+
 ## 1.1.4 (2026-07-12)
 
 - **Fix: chat was completely broken — the bundled model ids were retired by

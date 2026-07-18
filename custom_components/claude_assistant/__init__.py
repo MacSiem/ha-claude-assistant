@@ -334,11 +334,26 @@ async def ws_handle_update_settings(hass: HomeAssistant, connection: websocket_a
     data = hass.data.get(DOMAIN, {})
     settings = data.get("settings", {})
 
+    changed: dict = {}
     for key in ("model", "temperature", "max_tokens", "safety_level", "system_prompt"):
         if key in msg:
             settings[key] = msg[key]
+            changed[key] = msg[key]
 
     data["settings"] = settings
+
+    # Persist to the config entry. Previously this handler only updated the
+    # in-memory dict, so anything changed in the panel's Settings tab was
+    # silently lost on the next Home Assistant restart (the entry options
+    # were re-read at setup). The option keys match the settings keys.
+    if changed:
+        entries = hass.config_entries.async_entries(DOMAIN)
+        if entries:
+            entry = entries[0]
+            hass.config_entries.async_update_entry(
+                entry, options={**entry.options, **changed}
+            )
+
     await _add_log_entry(hass, "settings", "Settings updated")
     connection.send_result(msg["id"], {"status": "ok", "settings": settings})
 
