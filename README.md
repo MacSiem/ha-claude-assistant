@@ -18,6 +18,8 @@ as context automatically.
 > currently creates a pending action from a conversation. Treat this as a
 > context-aware chat assistant, not (yet) a hands-on controller.
 
+The panel's Settings tab follows the Home Assistant profile language (English or Polish; other languages use English). Changing the language preserves the current controls, focus and unsaved prompt draft. Conversation language remains a separate setting.
+
 ## How it works
 
 1. **One config entry, one conversation agent.** Setup asks for an Anthropic

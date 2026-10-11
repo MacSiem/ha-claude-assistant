@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.6 (2026-10-11)
+
+- Localize all Settings labels, authentication badges and confirmation choices in English and Polish using the Home Assistant profile language, with English fallback.
+- Refresh Settings text on language changes without replacing controls, losing a prompt draft or focus, or duplicating pending saves.
+- Add DOM regressions for language fallback, authentication methods, draft preservation and independent panel instances.
+
 ## 1.1.5 (2026-07-18)
 
 - Fix: settings changed in the panel Settings tab are now persisted to the config entry. Previously they only updated an in-memory copy and silently reverted to the stored options on the next Home Assistant restart.
