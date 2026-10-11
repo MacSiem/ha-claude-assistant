@@ -3,6 +3,59 @@
  * Features: Chat, Logs, Statistics/Visualizations, Settings
  */
 
+const CLAUDE_SETTINGS_TEXT = {
+  "en": {
+    "settings": "Settings",
+    "authentication": "Authentication",
+    "login_method": "Login method",
+    "reconfigure": "Changing this requires reconfiguring the integration",
+    "personal_account": "Personal account",
+    "api_key": "API key",
+    "ai_model": "AI model",
+    "claude_model": "Claude model",
+    "model_description": "Affects response quality and speed",
+    "generation": "Generation parameters",
+    "temperature": "Temperature",
+    "temperature_description": "Lower = more precise, higher = more creative",
+    "max_tokens": "Max tokens",
+    "tokens_description": "Response length limit (256 - 8192)",
+    "safety": "Safety",
+    "confirmation": "Confirmation level",
+    "confirmation_description": "When to ask for confirmation of smart home actions",
+    "all_actions": "Confirm all actions",
+    "dangerous_only": "Dangerous only",
+    "none": "No confirmations",
+    "system_prompt": "System prompt",
+    "instructions": "Instructions for Claude",
+    "prompt_description": "Define the assistant's behavior and role"
+  },
+  "pl": {
+    "settings": "Ustawienia",
+    "authentication": "Uwierzytelnianie",
+    "login_method": "Metoda logowania",
+    "reconfigure": "Zmiana wymaga rekonfiguracji integracji",
+    "personal_account": "Konto osobiste",
+    "api_key": "Klucz API",
+    "ai_model": "Model AI",
+    "claude_model": "Model Claude",
+    "model_description": "Wpływa na jakość i szybkość odpowiedzi",
+    "generation": "Parametry generowania",
+    "temperature": "Temperatura",
+    "temperature_description": "Niższa = większa precyzja, wyższa = większa kreatywność",
+    "max_tokens": "Maksymalna liczba tokenów",
+    "tokens_description": "Limit długości odpowiedzi (256–8192)",
+    "safety": "Bezpieczeństwo",
+    "confirmation": "Poziom potwierdzeń",
+    "confirmation_description": "Kiedy prosić o potwierdzenie działań w inteligentnym domu",
+    "all_actions": "Potwierdzaj wszystkie działania",
+    "dangerous_only": "Tylko niebezpieczne działania",
+    "none": "Bez potwierdzeń",
+    "system_prompt": "Instrukcja systemowa",
+    "instructions": "Instrukcje dla Claude",
+    "prompt_description": "Określ zachowanie i rolę asystenta"
+  }
+};
+
 class ClaudeAssistantPanel extends HTMLElement {
   constructor() {
     super();
@@ -19,12 +72,33 @@ class ClaudeAssistantPanel extends HTMLElement {
   }
 
   set hass(hass) {
+    const previousLanguage = this._settingsLanguage();
     this._hass = hass;
     if (!this.shadowRoot) {
       this._render();
       this._loadSettings();
       this._loadStats();
+    } else if (previousLanguage !== this._settingsLanguage()) {
+      this._refreshSettingsText();
     }
+  }
+
+  _settingsLanguage() {
+    const language = this._hass?.locale?.language || this._hass?.language || "en";
+    return String(language).toLowerCase().split(/[-_]/)[0] === "pl" ? "pl" : "en";
+  }
+
+  _settingsText(key) {
+    return CLAUDE_SETTINGS_TEXT[this._settingsLanguage()][key] || CLAUDE_SETTINGS_TEXT.en[key];
+  }
+
+  _refreshSettingsText() {
+    // Text-only updates retain focus, drafts, control listeners and pending saves.
+    const tab = this.shadowRoot?.querySelector('[data-tab="settings"]');
+    if (tab) tab.textContent = "⚙️ " + this._settingsText("settings");
+    this.shadowRoot?.querySelectorAll("[data-settings-text]").forEach(node => {
+      node.textContent = this._settingsText(node.dataset.settingsText);
+    });
   }
 
   setConfig(config) {
@@ -520,7 +594,7 @@ class ClaudeAssistantPanel extends HTMLElement {
           <div class="tab active" data-tab="chat">💬 Chat</div>
           <div class="tab" data-tab="logs">📋 Logs</div>
           <div class="tab" data-tab="stats">📊 Stats</div>
-          <div class="tab" data-tab="settings">⚙️ Settings</div>
+          <div class="tab" data-tab="settings">⚙️ ${this._settingsText("settings")}</div>
         </div>
 
         <!-- Chat Tab -->
@@ -800,9 +874,9 @@ class ClaudeAssistantPanel extends HTMLElement {
     const s = this._settings;
     const models = ["claude-sonnet-5", "claude-opus-4-8", "claude-haiku-4-5-20251001"];
     const safetyLevels = {
-      all_actions: "Confirm all actions",
-      dangerous_only: "Dangerous only",
-      none: "No confirmations",
+      all_actions: "all_actions",
+      dangerous_only: "dangerous_only",
+      none: "none",
     };
 
     const modelOptions = models.map((m) => {
@@ -812,41 +886,41 @@ class ClaudeAssistantPanel extends HTMLElement {
 
     const safetyOptions = Object.entries(safetyLevels).map(([k, v]) => {
       const sel = k === s.safety_level ? "selected" : "";
-      return `<option value="${k}" ${sel}>${v}</option>`;
+      return `<option value="${k}" ${sel} data-settings-text="${v}">${this._settingsText(v)}</option>`;
     }).join("");
 
-    const authLabel = s.auth_type === "personal_account" ? "Konto osobiste" : "Klucz API";
-    const authClass = s.auth_type || "api_key";
+    const authClass = s.auth_type === "personal_account" ? "personal_account" : "api_key";
+    const authLabel = this._settingsText(authClass);
 
     container.innerHTML = `
       <div class="settings-section">
-        <h3>Authentication</h3>
+        <h3 data-settings-text="authentication">${this._settingsText("authentication")}</h3>
         <div class="setting-row">
           <div>
-            <div class="setting-label">Login method</div>
-            <div class="setting-desc">Zmiana wymaga rekonfiguracji integracji</div>
+            <div class="setting-label" data-settings-text="login_method">${this._settingsText("login_method")}</div>
+            <div class="setting-desc" data-settings-text="reconfigure">${this._settingsText("reconfigure")}</div>
           </div>
-          <span class="auth-badge ${authClass}">${authLabel}</span>
+          <span class="auth-badge ${authClass}" data-settings-text="${authClass}">${authLabel}</span>
         </div>
       </div>
 
       <div class="settings-section">
-        <h3>Model AI</h3>
+        <h3 data-settings-text="ai_model">${this._settingsText("ai_model")}</h3>
         <div class="setting-row">
           <div>
-            <div class="setting-label">Model Claude</div>
-            <div class="setting-desc">Affects response quality and speed</div>
+            <div class="setting-label" data-settings-text="claude_model">${this._settingsText("claude_model")}</div>
+            <div class="setting-desc" data-settings-text="model_description">${this._settingsText("model_description")}</div>
           </div>
           <select id="set-model">${modelOptions}</select>
         </div>
       </div>
 
       <div class="settings-section">
-        <h3>Generation parameters</h3>
+        <h3 data-settings-text="generation">${this._settingsText("generation")}</h3>
         <div class="setting-row">
           <div>
-            <div class="setting-label">Temperature</div>
-            <div class="setting-desc">Lower = more precise, higher = more creative</div>
+            <div class="setting-label" data-settings-text="temperature">${this._settingsText("temperature")}</div>
+            <div class="setting-desc" data-settings-text="temperature_description">${this._settingsText("temperature_description")}</div>
           </div>
           <div style="display:flex;align-items:center;gap:8px;">
             <input type="range" id="set-temperature" min="0" max="1" step="0.05" value="${s.temperature || 0.7}" style="min-width:120px" />
@@ -855,30 +929,30 @@ class ClaudeAssistantPanel extends HTMLElement {
         </div>
         <div class="setting-row">
           <div>
-            <div class="setting-label">Max tokens</div>
-            <div class="setting-desc">Response length limit (256 - 8192)</div>
+            <div class="setting-label" data-settings-text="max_tokens">${this._settingsText("max_tokens")}</div>
+            <div class="setting-desc" data-settings-text="tokens_description">${this._settingsText("tokens_description")}</div>
           </div>
           <input type="number" id="set-max-tokens" min="256" max="8192" step="256" value="${s.max_tokens || 2048}" />
         </div>
       </div>
 
       <div class="settings-section">
-        <h3>Safety</h3>
+        <h3 data-settings-text="safety">${this._settingsText("safety")}</h3>
         <div class="setting-row">
           <div>
-            <div class="setting-label">Confirmation level</div>
-            <div class="setting-desc">When to ask for confirmation of smart home actions</div>
+            <div class="setting-label" data-settings-text="confirmation">${this._settingsText("confirmation")}</div>
+            <div class="setting-desc" data-settings-text="confirmation_description">${this._settingsText("confirmation_description")}</div>
           </div>
           <select id="set-safety">${safetyOptions}</select>
         </div>
       </div>
 
       <div class="settings-section">
-        <h3>System prompt</h3>
+        <h3 data-settings-text="system_prompt">${this._settingsText("system_prompt")}</h3>
         <div class="setting-row setting-full">
           <div>
-            <div class="setting-label">Instructions for Claude</div>
-            <div class="setting-desc">Define the assistant's behavior and role</div>
+            <div class="setting-label" data-settings-text="instructions">${this._settingsText("instructions")}</div>
+            <div class="setting-desc" data-settings-text="prompt_description">${this._settingsText("prompt_description")}</div>
           </div>
           <textarea id="set-prompt">${this._escapeHtml(s.system_prompt || "")}</textarea>
         </div>
