@@ -1,0 +1,10 @@
+{
+  "name": "ha-claude-assistant-panel-tests",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/settings_locale.test.cjs"
+  },
+  "devDependencies": {
+    "jsdom": "24.1.3"
+  }
+}

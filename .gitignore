@@ -33,3 +33,6 @@ test.txt
 
 # Home Assistant runtime
 .storage/
+
+# Frontend test dependencies
+node_modules/
