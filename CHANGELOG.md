@@ -2,6 +2,8 @@
 
 ## 1.1.6 (2026-10-11)
 
+- Version the sidebar script URL so existing browser caches load the updated panel after an integration upgrade.
+
 - Localize all Settings labels, authentication badges and confirmation choices in English and Polish using the Home Assistant profile language, with English fallback.
 - Refresh Settings text on language changes without replacing controls, losing a prompt draft or focus, or duplicating pending saves.
 - Add DOM regressions for language fallback, authentication methods, draft preservation and independent panel instances.

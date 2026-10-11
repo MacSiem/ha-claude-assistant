@@ -1,6 +1,7 @@
 """Constants for the Claude Assistant integration."""
 
 DOMAIN = "claude_assistant"
+VERSION = "1.1.6"
 
 # Config keys
 CONF_API_KEY = "api_key"

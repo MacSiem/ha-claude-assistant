@@ -37,6 +37,7 @@ from .const import (
     DEFAULT_SYSTEM_PROMPT,
     DEFAULT_TEMPERATURE,
     DOMAIN,
+    VERSION,
     PANEL_ICON,
     PANEL_TITLE,
     SAFETY_LEVEL_ALL,
@@ -531,7 +532,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "name": "claude-assistant-panel",
                     "embed_iframe": False,
                     "trust_external": False,
-                    "js_url": "/api/panel_custom/claude-assistant/panel.js",
+                    "js_url": f"/api/panel_custom/claude-assistant/panel.js?v={VERSION}",
                 }
             },
             require_admin=False,
