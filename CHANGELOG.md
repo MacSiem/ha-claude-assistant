@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.0 (2026-10-30) — final release, integration retired
+
+- **Retired.** Home Assistant ships a built-in Anthropic integration; this repository is archived after this release. A Repairs notice points administrators to the built-in integration, and the README describes the move.
+- **Removed the claude.ai session-key ("personal account") mode.** Setup now asks only for an Anthropic API key. Config entries move to version 3: any stored session key is deleted on upgrade, and an entry that used it stops with a Repairs error explaining how to continue.
+- Tests cover the session-mode removal, the entry migration and the retirement metadata.
+
 ## 1.1.6 (2026-10-11)
 
 - Version the sidebar script URL so existing browser caches load the updated panel after an integration upgrade.

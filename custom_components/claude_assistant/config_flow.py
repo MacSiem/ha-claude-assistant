@@ -10,18 +10,17 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 
 from .api_client import ClaudeAPIClient
+from .migration import ENTRY_VERSION
 from .const import (
+    ANTHROPIC_INTEGRATION_URL,
     CONF_API_KEY,
     CONF_AUTH_TYPE,
     CONF_MAX_TOKENS,
     CONF_MODEL,
     CONF_SAFETY_LEVEL,
-    CONF_SESSION_KEY,
     CONF_SYSTEM_PROMPT,
     CONF_TEMPERATURE,
     AUTH_TYPE_API_KEY,
-    AUTH_TYPE_PERSONAL,
-    AUTH_TYPES,
     CLAUDE_MODELS,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL,
@@ -46,47 +45,18 @@ class InvalidAuth(HomeAssistantError):
 class ClaudeAssistantConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow for Claude Assistant integration."""
 
-    VERSION = 2
+    VERSION = ENTRY_VERSION
 
     def __init__(self) -> None:
         """Initialize the config flow."""
         self._api_key: Optional[str] = None
-        self._session_key: Optional[str] = None
-        self._auth_type: str = AUTH_TYPE_API_KEY
         self._model: str = DEFAULT_MODEL
 
     async def async_step_user(
         self, user_input: Optional[dict[str, Any]] = None
     ) -> FlowResult:
-        """Handle the auth type selection step."""
-        errors: dict[str, str] = {}
-
-        if user_input is not None:
-            self._auth_type = user_input[CONF_AUTH_TYPE]
-            if self._auth_type == AUTH_TYPE_API_KEY:
-                return await self.async_step_api_key()
-            else:
-                return await self.async_step_personal()
-
-        return self.async_show_form(
-            step_id="user",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(
-                        CONF_AUTH_TYPE, default=AUTH_TYPE_API_KEY
-                    ): vol.In(
-                        {
-                            AUTH_TYPE_API_KEY: "Klucz API Anthropic",
-                            AUTH_TYPE_PERSONAL: "Konto osobiste (Session Key)",
-                        }
-                    ),
-                }
-            ),
-            errors=errors,
-            description_placeholders={
-                "api_info": "Wybierz metodę autoryzacji"
-            },
-        )
+        """Start with the API key; the claude.ai session-key mode was removed in 1.2.0."""
+        return await self.async_step_api_key(user_input)
 
     async def async_step_api_key(
         self, user_input: Optional[dict[str, Any]] = None
@@ -118,46 +88,8 @@ class ClaudeAssistantConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             ),
             errors=errors,
             description_placeholders={
-                "api_url": "https://console.anthropic.com/settings/keys"
-            },
-        )
-
-    async def async_step_personal(
-        self, user_input: Optional[dict[str, Any]] = None
-    ) -> FlowResult:
-        """Handle personal account session key step."""
-        errors: dict[str, str] = {}
-
-        if user_input is not None:
-            self._session_key = user_input[CONF_SESSION_KEY]
-
-            try:
-                client = ClaudeAPIClient(
-                    api_key=self._session_key, auth_type=AUTH_TYPE_PERSONAL
-                )
-                await client.async_init(self.hass)
-                valid = await client.validate_api_key()
-                if not valid:
-                    errors["base"] = "invalid_session"
-                else:
-                    return await self.async_step_model()
-            except Exception:
-                _LOGGER.exception("Error validating session key")
-                errors["base"] = "cannot_connect"
-
-        return self.async_show_form(
-            step_id="personal",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_SESSION_KEY): str,
-                }
-            ),
-            errors=errors,
-            description_placeholders={
-                "session_info": (
-                    "Wklej klucz sesji z claude.ai. "
-                    "Znajdziesz go w Developer Tools > Application > Cookies > sessionKey"
-                )
+                "api_url": "https://console.anthropic.com/settings/keys",
+                "anthropic_url": ANTHROPIC_INTEGRATION_URL,
             },
         )
 
@@ -186,15 +118,11 @@ class ClaudeAssistantConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle safety level configuration."""
         if user_input is not None:
             data = {
-                CONF_AUTH_TYPE: self._auth_type,
+                CONF_AUTH_TYPE: AUTH_TYPE_API_KEY,
+                CONF_API_KEY: self._api_key,
                 CONF_MODEL: self._model,
                 CONF_SAFETY_LEVEL: user_input[CONF_SAFETY_LEVEL],
             }
-
-            if self._auth_type == AUTH_TYPE_API_KEY:
-                data[CONF_API_KEY] = self._api_key
-            else:
-                data[CONF_SESSION_KEY] = self._session_key
 
             return self.async_create_entry(
                 title="Claude Assistant",

@@ -7,8 +7,6 @@ from typing import Any, Optional
 from anthropic import AsyncAnthropic, APIError
 
 from .const import (
-    AUTH_TYPE_API_KEY,
-    AUTH_TYPE_PERSONAL,
     CLAUDE_MODELS,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL,
@@ -26,15 +24,13 @@ class ClaudeAPIClient:
         self,
         api_key: str,
         model: str = DEFAULT_MODEL,
-        auth_type: str = AUTH_TYPE_API_KEY,
     ) -> None:
-        """Initialize the Claude API client.
+        """Initialize the Claude API client with an Anthropic API key.
 
         Note: Does NOT create the AsyncAnthropic client immediately to avoid
         blocking SSL calls in the event loop. Call async_init() before use.
         """
         self._api_key = api_key
-        self._auth_type = auth_type
         self.client: Optional[AsyncAnthropic] = None
         self.model = model if model in CLAUDE_MODELS else CLAUDE_MODELS[0]
         self._temperature_unsupported = False
@@ -47,15 +43,10 @@ class ClaudeAPIClient:
         the event loop with SSL initialization.
         """
         def _create_client():
-            if self._auth_type == AUTH_TYPE_PERSONAL:
-                # For personal accounts, use session key as API key
-                # This works if user provides an API-compatible key
-                return AsyncAnthropic(api_key=self._api_key)
-            else:
-                return AsyncAnthropic(api_key=self._api_key)
+            return AsyncAnthropic(api_key=self._api_key)
 
         self.client = await hass.async_add_executor_job(_create_client)
-        _LOGGER.debug("AsyncAnthropic client initialized (auth: %s)", self._auth_type)
+        _LOGGER.debug("AsyncAnthropic client initialized")
 
     def _ensure_client(self) -> AsyncAnthropic:
         """Ensure the client is initialized."""

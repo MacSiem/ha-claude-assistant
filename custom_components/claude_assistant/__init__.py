@@ -12,7 +12,8 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse, callback
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import ConfigEntryError, HomeAssistantError
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.storage import Store
 from homeassistant.components import websocket_api
@@ -21,17 +22,18 @@ import homeassistant.helpers.config_validation as cv
 
 from .action_handler import ActionHandler
 from .api_client import ClaudeAPIClient
+from .migration import ENTRY_VERSION, SESSION_MODE_REMOVED, strip_session_mode
 from .const import (
+    ANTHROPIC_INTEGRATION_URL,
     CONF_API_KEY,
-    CONF_AUTH_TYPE,
     CONF_MAX_TOKENS,
     CONF_MODEL,
     CONF_SAFETY_LEVEL,
-    CONF_SESSION_KEY,
     CONF_SYSTEM_PROMPT,
     CONF_TEMPERATURE,
     AUTH_TYPE_API_KEY,
-    AUTH_TYPE_PERSONAL,
+    ISSUE_INTEGRATION_RETIRED,
+    ISSUE_SESSION_MODE_REMOVED,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL,
     DEFAULT_SYSTEM_PROMPT,
@@ -368,14 +370,54 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
 
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Purge the removed claude.ai session-key mode from older entries."""
+    if entry.version < ENTRY_VERSION:
+        data, legacy = strip_session_mode(dict(entry.data))
+        hass.config_entries.async_update_entry(entry, data=data, version=ENTRY_VERSION)
+        if legacy:
+            _LOGGER.warning(
+                "Claude Assistant: the claude.ai session-key mode was removed in 1.2.0; "
+                "the stored session key was deleted. Set up an Anthropic API key or move "
+                "to the built-in Anthropic integration."
+            )
+    return True
+
+
+def _retirement_issue(hass: HomeAssistant) -> None:
+    """Tell administrators in Repairs that this integration is retired."""
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        ISSUE_INTEGRATION_RETIRED,
+        is_fixable=False,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key=ISSUE_INTEGRATION_RETIRED,
+        learn_more_url=ANTHROPIC_INTEGRATION_URL,
+    )
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Claude Assistant from a config entry."""
-    auth_type = entry.data.get(CONF_AUTH_TYPE, AUTH_TYPE_API_KEY)
-
-    if auth_type == AUTH_TYPE_PERSONAL:
-        api_key = entry.data.get(CONF_SESSION_KEY, "")
-    else:
-        api_key = entry.data.get(CONF_API_KEY, "")
+    _retirement_issue(hass)
+    api_key = entry.data.get(CONF_API_KEY, "")
+    if not api_key:
+        if entry.data.get(SESSION_MODE_REMOVED):
+            ir.async_create_issue(
+                hass,
+                DOMAIN,
+                ISSUE_SESSION_MODE_REMOVED,
+                is_fixable=False,
+                severity=ir.IssueSeverity.ERROR,
+                translation_key=ISSUE_SESSION_MODE_REMOVED,
+                learn_more_url=ANTHROPIC_INTEGRATION_URL,
+            )
+            raise ConfigEntryError(
+                "The claude.ai session-key mode was removed in 1.2.0. Remove this entry and "
+                "use the built-in Anthropic integration, or add Claude Assistant again with an API key."
+            )
+        raise ConfigEntryError("No Anthropic API key is configured for this entry.")
+    auth_type = AUTH_TYPE_API_KEY
 
     model = entry.data.get(CONF_MODEL, DEFAULT_MODEL)
     if entry.options.get(CONF_MODEL):
@@ -393,7 +435,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     api_client = ClaudeAPIClient(
         api_key=api_key,
         model=model,
-        auth_type=auth_type,
     )
     await api_client.async_init(hass)
 
@@ -553,6 +594,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         hass.data.pop(DOMAIN, None)
     return unload_ok
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Clear the retirement notices once the integration entry is removed."""
+    for issue_id in (ISSUE_INTEGRATION_RETIRED, ISSUE_SESSION_MODE_REMOVED):
+        ir.async_delete_issue(hass, DOMAIN, issue_id)
 
 
 async def async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:

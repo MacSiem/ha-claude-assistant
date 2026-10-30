@@ -1,5 +1,23 @@
 # Claude Assistant
 
+> [!IMPORTANT]
+> **This integration is retired. 1.2.0 is the final release and the repository is archived.**
+> Home Assistant now ships a built-in [Anthropic integration](https://www.home-assistant.io/integrations/anthropic/)
+> (conversation agent, AI Task and control through Assist, configured with an Anthropic API key).
+> Please move to it — see [Moving to the built-in Anthropic integration](#moving-to-the-built-in-anthropic-integration).
+>
+> 1.2.0 also removes the claude.ai session-key ("personal account") mode. Anthropic does not allow third-party
+> apps to collect or store claude.ai session tokens, so on upgrade any stored session key is deleted and such
+> an entry stops with a Repairs notice. If you ever entered a session key, sign out of your other sessions on claude.ai.
+
+## Moving to the built-in Anthropic integration
+
+1. Create an API key at [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) (or reuse the key you used here).
+2. In Home Assistant go to **Settings → Devices & services → Add integration → Anthropic** and enter the key.
+3. If you want Claude to control devices, enable Assist control in the Anthropic integration's options. Then in **Settings → Voice assistants** pick the Anthropic conversation agent for your assistant.
+4. Replace any `claude_assistant.chat` service calls in automations with `conversation.process` (agent: Anthropic) or the AI Task actions.
+5. Remove Claude Assistant: **Settings → Devices & services → Claude Assistant → Delete**, then remove it from HACS. The sidebar panel, its logs and statistics are local to this integration and are not migrated.
+
 ![Preview](banner.png)
 
 Chat with Anthropic's Claude inside Home Assistant — as a sidebar panel and as
@@ -23,7 +41,7 @@ The panel's Settings tab follows the Home Assistant profile language (English or
 ## How it works
 
 1. **One config entry, one conversation agent.** Setup asks for an Anthropic
-   API key (or an unsupported "personal account" option, see FAQ), a Claude
+   API key, a Claude
    model, and a default safety level. This registers a `conversation.*`
    entity that can be picked as the agent for a Voice Assistants pipeline.
 2. **A sidebar panel ships automatically.** After restart, a **Claude
@@ -177,12 +195,10 @@ Home Assistant service. The `ActionHandler`, safety levels, and
 `confirm_action`/`get_pending` WebSocket commands exist for a future
 tool-calling release but aren't wired into any current chat path.
 
-**What's the "Personal account (session key)" option in setup?**
-It asks for a `sessionKey` cookie value from claude.ai and sends it to the
-Anthropic API client exactly like an API key. A claude.ai web-session cookie
-is not an Anthropic Console API key, and Anthropic doesn't document or
-support this use — this path is unlikely to work. Use a real API key from
-`console.anthropic.com/settings/keys` instead.
+**What happened to the "Personal account (session key)" option?**
+It was removed in 1.2.0. It asked for a claude.ai `sessionKey` cookie, which is not an API key and
+must not be collected by third-party apps. Upgrading deletes any stored session key; use an Anthropic
+API key or the built-in Anthropic integration instead.
 
 **Which Claude models can I pick, and what do they cost?**
 `claude-sonnet-5` (default), `claude-opus-4-8`, and

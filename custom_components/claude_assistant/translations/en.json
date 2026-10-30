@@ -1,25 +1,11 @@
 {
   "config": {
     "step": {
-      "user": {
-        "title": "Authentication method",
-        "description": "Choose how to connect to Claude AI",
-        "data": {
-          "auth_type": "Authentication method"
-        }
-      },
       "api_key": {
         "title": "Anthropic API Key",
-        "description": "Enter your API key from {api_url}",
+        "description": "This integration is retired; 1.2.0 is the final release. For new setups use the built-in Anthropic integration in Home Assistant: {anthropic_url}. To continue anyway, enter your API key from {api_url}.",
         "data": {
           "api_key": "API Key"
-        }
-      },
-      "personal": {
-        "title": "Personal account",
-        "description": "{session_info}",
-        "data": {
-          "session_key": "Session Key"
         }
       },
       "model": {
@@ -40,7 +26,6 @@
     "error": {
       "cannot_connect": "Failed to connect to Anthropic API",
       "invalid_auth": "Invalid API key",
-      "invalid_session": "Invalid session key",
       "unknown": "Unexpected error"
     },
     "abort": {
@@ -60,6 +45,16 @@
           "system_prompt": "System prompt"
         }
       }
+    }
+  },
+  "issues": {
+    "integration_retired": {
+      "title": "Claude Assistant is retired",
+      "description": "Claude Assistant is no longer developed. Move to the built-in Anthropic integration in Home Assistant (conversation agent, AI Task and Assist control), then remove Claude Assistant."
+    },
+    "session_mode_removed": {
+      "title": "The claude.ai session-key mode was removed",
+      "description": "This entry used a claude.ai session key. Version 1.2.0 removed that mode and deleted the stored key. Remove the entry and use the built-in Anthropic integration, or add Claude Assistant again with an API key. For safety, sign out of your other claude.ai sessions."
     }
   }
 }
