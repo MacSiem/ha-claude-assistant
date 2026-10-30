@@ -1,25 +1,11 @@
 {
   "config": {
     "step": {
-      "user": {
-        "title": "Metoda autoryzacji",
-        "description": "Wybierz sposób logowania do Claude AI",
-        "data": {
-          "auth_type": "Metoda autoryzacji"
-        }
-      },
       "api_key": {
         "title": "Klucz API Anthropic",
-        "description": "Wprowadź klucz API z {api_url}",
+        "description": "Ta integracja jest wycofana; 1.2.0 to ostatnie wydanie. Do nowej konfiguracji użyj wbudowanej integracji Anthropic w Home Assistant: {anthropic_url}. Jeśli mimo to kontynuujesz, wprowadź klucz API z {api_url}.",
         "data": {
           "api_key": "Klucz API"
-        }
-      },
-      "personal": {
-        "title": "Konto osobiste",
-        "description": "{session_info}",
-        "data": {
-          "session_key": "Klucz sesji (sessionKey)"
         }
       },
       "model": {
@@ -40,7 +26,6 @@
     "error": {
       "cannot_connect": "Nie można połączyć z API Anthropic",
       "invalid_auth": "Nieprawidłowy klucz API",
-      "invalid_session": "Nieprawidłowy klucz sesji",
       "unknown": "Nieoczekiwany błąd"
     },
     "abort": {
@@ -60,6 +45,16 @@
           "system_prompt": "Prompt systemowy"
         }
       }
+    }
+  },
+  "issues": {
+    "integration_retired": {
+      "title": "Claude Assistant jest wycofany",
+      "description": "Claude Assistant nie będzie dalej rozwijany. Przejdź na wbudowaną integrację Anthropic w Home Assistant (agent konwersacji, AI Task i sterowanie przez Assist), a potem usuń Claude Assistant."
+    },
+    "session_mode_removed": {
+      "title": "Tryb klucza sesji claude.ai został usunięty",
+      "description": "Ten wpis używał klucza sesji claude.ai. Wersja 1.2.0 usunęła ten tryb i skasowała zapisany klucz. Usuń wpis i użyj wbudowanej integracji Anthropic albo dodaj Claude Assistant ponownie z kluczem API. Dla bezpieczeństwa wyloguj pozostałe sesje na claude.ai."
     }
   }
 }

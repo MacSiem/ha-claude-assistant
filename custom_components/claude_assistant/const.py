@@ -1,22 +1,28 @@
 """Constants for the Claude Assistant integration."""
 
 DOMAIN = "claude_assistant"
-VERSION = "1.1.6"
+VERSION = "1.2.0"
 
 # Config keys
 CONF_API_KEY = "api_key"
 CONF_MODEL = "model"
 CONF_SAFETY_LEVEL = "safety_level"
 CONF_AUTH_TYPE = "auth_type"
-CONF_SESSION_KEY = "session_key"
 CONF_TEMPERATURE = "temperature"
 CONF_MAX_TOKENS = "max_tokens"
 CONF_SYSTEM_PROMPT = "system_prompt"
 
-# Auth types
+# Auth types. The claude.ai session-key mode was removed in 1.2.0; the legacy
+# identifiers below exist only so the entry migration can find and purge it.
 AUTH_TYPE_API_KEY = "api_key"
-AUTH_TYPE_PERSONAL = "personal_account"
-AUTH_TYPES = [AUTH_TYPE_API_KEY, AUTH_TYPE_PERSONAL]
+AUTH_TYPES = [AUTH_TYPE_API_KEY]
+LEGACY_AUTH_TYPE_PERSONAL = "personal_account"
+LEGACY_CONF_SESSION_KEY = "session_key"
+
+# Retirement (1.2.0 is the final release)
+ANTHROPIC_INTEGRATION_URL = "https://www.home-assistant.io/integrations/anthropic/"
+ISSUE_INTEGRATION_RETIRED = "integration_retired"
+ISSUE_SESSION_MODE_REMOVED = "session_mode_removed"
 
 # Safety levels
 SAFETY_LEVEL_ALL = "all_actions"
